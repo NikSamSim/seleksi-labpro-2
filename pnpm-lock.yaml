@@ -15,6 +15,44 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  applications/app-a:
+    dependencies:
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
+      fastify:
+        specifier: ^5.11.3
+        version: 5.11.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@24.13.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.12))
+
+  applications/app-b:
+    dependencies:
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
+      fastify:
+        specifier: ^5.11.3
+        version: 5.11.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@24.13.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.12))
+
   auth-provider/server:
     dependencies:
       amqplib:

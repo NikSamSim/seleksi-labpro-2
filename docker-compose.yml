@@ -1,0 +1,159 @@
+services:
+  primary-db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ${PRIMARY_DB_USER}
+      POSTGRES_PASSWORD: ${PRIMARY_DB_PASSWORD}
+      POSTGRES_DB: ${PRIMARY_DB_NAME}
+    ports:
+      - "${PRIMARY_DB_PORT}:5432"
+    volumes:
+      - primary-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PRIMARY_DB_USER} -d ${PRIMARY_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  app-a-db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ${APP_A_DB_USER}
+      POSTGRES_PASSWORD: ${APP_A_DB_PASSWORD}
+      POSTGRES_DB: ${APP_A_DB_NAME}
+    ports:
+      - "${APP_A_DB_PORT}:5432"
+    volumes:
+      - app-a-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${APP_A_DB_USER} -d ${APP_A_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  app-b-db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ${APP_B_DB_USER}
+      POSTGRES_PASSWORD: ${APP_B_DB_PASSWORD}
+      POSTGRES_DB: ${APP_B_DB_NAME}
+    ports:
+      - "${APP_B_DB_PORT}:5432"
+    volumes:
+      - app-b-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${APP_B_DB_USER} -d ${APP_B_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "${RABBITMQ_AMQP_PORT}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  auth-server:
+    build:
+      context: .
+      dockerfile: auth-provider/server/Dockerfile
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      AUTH_SERVER_PORT: ${AUTH_SERVER_PORT}
+      PRIMARY_DATABASE_URL: postgresql://${PRIMARY_DB_USER}:${PRIMARY_DB_PASSWORD}@primary-db:5432/${PRIMARY_DB_NAME}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    ports:
+      - "${AUTH_SERVER_PORT}:${AUTH_SERVER_PORT}"
+    depends_on:
+      primary-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  sync-worker:
+    build:
+      context: .
+      dockerfile: auth-provider/sync-worker/Dockerfile
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      SYNC_WORKER_PORT: ${SYNC_WORKER_PORT}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    ports:
+      - "${SYNC_WORKER_PORT}:${SYNC_WORKER_PORT}"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  event-publisher:
+    build:
+      context: .
+      dockerfile: auth-provider/event-publisher/Dockerfile
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      EVENT_PUBLISHER_PORT: ${EVENT_PUBLISHER_PORT}
+      PRIMARY_DATABASE_URL: postgresql://${PRIMARY_DB_USER}:${PRIMARY_DB_PASSWORD}@primary-db:5432/${PRIMARY_DB_NAME}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    ports:
+      - "${EVENT_PUBLISHER_PORT}:${EVENT_PUBLISHER_PORT}"
+    depends_on:
+      primary-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  app-a:
+    build:
+      context: .
+      dockerfile: applications/app-a/Dockerfile
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      APP_A_PORT: ${APP_A_PORT}
+      APP_A_DATABASE_URL: postgresql://${APP_A_DB_USER}:${APP_A_DB_PASSWORD}@app-a-db:5432/${APP_A_DB_NAME}
+    ports:
+      - "${APP_A_PORT}:${APP_A_PORT}"
+    depends_on:
+      app-a-db:
+        condition: service_healthy
+
+  app-b:
+    build:
+      context: .
+      dockerfile: applications/app-b/Dockerfile
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      APP_B_PORT: ${APP_B_PORT}
+      APP_B_DATABASE_URL: postgresql://${APP_B_DB_USER}:${APP_B_DB_PASSWORD}@app-b-db:5432/${APP_B_DB_NAME}
+    ports:
+      - "${APP_B_PORT}:${APP_B_PORT}"
+    depends_on:
+      app-b-db:
+        condition: service_healthy
+
+  control-panel:
+    build:
+      context: .
+      dockerfile: auth-provider/control-panel/Dockerfile
+    environment:
+      CONTROL_PANEL_PORT: ${CONTROL_PANEL_PORT}
+    ports:
+      - "${CONTROL_PANEL_PORT}:${CONTROL_PANEL_PORT}"
+
+volumes:
+  primary-db-data:
+  app-a-db-data:
+  app-b-db-data:
+  rabbitmq-data:

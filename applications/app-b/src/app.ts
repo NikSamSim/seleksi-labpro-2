@@ -23,6 +23,8 @@ export function buildApp() {
                 }
             });
         } catch {
+            app.log.warn("App B database readiness check failed");
+            
             return reply.code(503).send({
                 status: "not_ready",
                 components: {

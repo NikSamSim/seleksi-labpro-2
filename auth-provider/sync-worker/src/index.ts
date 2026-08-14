@@ -7,14 +7,27 @@ let shuttingDown = false;
 const app = buildApp(() => shuttingDown);
 
 try {
-    await connectRabbitMQ();
+    app.log.info(
+        { port: env.SYNC_WORKER_PORT },
+        "Starting sync worker"
+    );
+
+    try {
+        await connectRabbitMQ();
+        app.log.info("Sync worker connected to RabbitMQ");
+    } catch {
+        app.log.error("Sync worker failed to connect to RabbitMQ");
+        throw new Error("RabbitMQ connection failed");
+    }
 
     await app.listen({
         port: env.SYNC_WORKER_PORT,
         host: "0.0.0.0"
     });
-} catch (error) {
-    app.log.error(error);
+
+    app.log.info("Sync worker started successfully");
+} catch {
+    app.log.error("Failed to start sync worker");
     process.exit(1);
 }
 
@@ -44,6 +57,3 @@ process.once("SIGTERM", () => {
 process.once("SIGINT", () => {
     void shutdown("SIGINT");
 });
-
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);

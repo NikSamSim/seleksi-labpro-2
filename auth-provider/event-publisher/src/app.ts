@@ -32,6 +32,7 @@ export function buildApp(
             database = "up";
         } catch {
             database = "down";
+            app.log.warn("Event publisher database readiness check failed");
         }
 
         try {
@@ -39,6 +40,7 @@ export function buildApp(
             messageBroker = "up";
         } catch {
             messageBroker = "down";
+            app.log.warn("Event publisher RabbitMQ readiness check failed");
         }
 
         const ready = database === "up" && messageBroker === "up";

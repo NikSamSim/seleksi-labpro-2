@@ -7,12 +7,19 @@ const app = buildApp();
 let shuttingDown = false;
 
 try {
+    app.log.info(
+        { port: env.APP_A_PORT },
+        "Starting App A"
+    );
+
     await app.listen({
         port: env.APP_A_PORT,
         host: "0.0.0.0"
     });
-} catch (error) {
-    app.log.error(error);
+
+    app.log.info("App A started successfully");
+} catch {
+    app.log.error("Failed to start App A");
     process.exit(1);
 }
 

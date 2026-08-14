@@ -2,3 +2,6 @@ packages:
   - "auth-provider/*"
   - "applications/*"
   - "packages/*"
+
+allowBuilds:
+  esbuild: true

@@ -14,4 +14,4 @@ WORKDIR /app/auth-provider/event-publisher
 
 EXPOSE 5001
 
-CMD ["pnpm", "start"]
+CMD ["node", "dist/index.js"]

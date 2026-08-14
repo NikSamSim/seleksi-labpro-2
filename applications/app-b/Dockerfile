@@ -14,4 +14,4 @@ WORKDIR /app/applications/app-b
 
 EXPOSE 4001
 
-CMD ["pnpm", "start"]
+CMD ["node", "dist/index.js"]

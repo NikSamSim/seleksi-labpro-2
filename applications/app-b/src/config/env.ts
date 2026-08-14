@@ -10,7 +10,8 @@ dotenv.config({
 
 const schema = z.object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-    APP_B_PORT: z.coerce.number().int().positive().default(4001)
+    APP_B_PORT: z.coerce.number().int().positive().default(4001),
+    APP_B_DATABASE_URL: z.string().min(1)
 });
 
 export const env = schema.parse(process.env);

@@ -23,6 +23,7 @@ export function buildApp() {
             database = "up";
         } catch {
             database = "down";
+            app.log.warn("Primary database readiness check failed");
         }
 
         try {
@@ -30,6 +31,7 @@ export function buildApp() {
             messageBroker = "up";
         } catch {
             messageBroker = "down";
+            app.log.warn("RabbitMQ readiness check failed");
         }
 
         const ready = database === "up" && messageBroker === "up";

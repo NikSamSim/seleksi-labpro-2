@@ -1,7 +1,8 @@
 packages:
-  - "auth-provider/*"
-  - "applications/*"
-  - "packages/*"
+  - auth-provider/*
+  - applications/*
+  - packages/*
 
 allowBuilds:
+  argon2: true
   esbuild: true

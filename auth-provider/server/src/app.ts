@@ -1,11 +1,17 @@
 import Fastify from "fastify";
+import cors from "@fastify/cors";
 
+import { env } from "./config/env.js";
 import { checkDatabase } from "./db/client.js";
 import { checkRabbitMQ } from "./messaging/rabbitmq.js";
 
 export function buildApp() {
     const app = Fastify({
         logger: true
+    });
+
+    app.register(cors, {
+        origin: env.CONTROL_PANEL_ORIGIN
     });
 
     app.get("/health/live", async () => {

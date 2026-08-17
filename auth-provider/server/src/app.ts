@@ -19,6 +19,17 @@ function isFastifyValidationError(
     );
 }
 
+function isInvalidJsonBodyError(
+    error: unknown
+): error is { code: string } {
+    return (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "FST_ERR_CTP_INVALID_JSON_BODY"
+    );
+}
+
 export function buildApp() {
     const app = Fastify({
         logger: true
@@ -65,10 +76,32 @@ export function buildApp() {
                 );
         }
 
+        if (isInvalidJsonBodyError(error)) {
+            request.log.warn(
+                {
+                    requestId: request.id
+                },
+                "Request body contains invalid JSON"
+            );
+
+            return reply
+                .status(400)
+                .send(
+                    createErrorResponse(
+                        "VALIDATION_ERROR",
+                        "Request body bukan JSON yang valid",
+                        request.id
+                    )
+                );
+        }
+
         request.log.error(
             {
-                err: error,
-                requestId: request.id
+                requestId: request.id,
+                errorType:
+                    error instanceof Error
+                        ? error.name
+                        : "UnknownError"
             },
             "Unhandled request error"
         );

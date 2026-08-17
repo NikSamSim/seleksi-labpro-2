@@ -13,6 +13,7 @@ import {
     addUserToGroup,
     createGroup,
     listGroups,
+    listGroupUsers,
     listUserGroups,
     removeUserFromGroup,
     updateGroup
@@ -26,6 +27,23 @@ export async function groupRoutes(app: FastifyInstance) {
             groups
         };
     });
+
+    app.get(
+        "/:groupId/users",
+        async (request) => {
+            const { groupId } =
+                groupIdParamsSchema.parse(
+                    request.params
+                );
+
+            const users =
+                await listGroupUsers(groupId);
+
+            return {
+                users
+            };
+        }
+    );
 
     app.post("/", async (request, reply) => {
         const input =

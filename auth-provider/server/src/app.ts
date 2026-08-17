@@ -136,7 +136,15 @@ export function buildApp() {
     });
 
     app.register(cors, {
-        origin: env.CONTROL_PANEL_ORIGIN
+        origin: env.CONTROL_PANEL_ORIGIN,
+        methods: [
+            "GET",
+            "HEAD",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+        ]
     });
 
     app.register(userRoutes, {

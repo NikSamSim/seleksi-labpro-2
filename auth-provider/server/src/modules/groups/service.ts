@@ -287,3 +287,51 @@ export async function removeUserFromGroup(
 
     return membership;
 }
+
+export async function listGroupUsers(
+    groupId: string
+) {
+    const rows = await db
+        .select({
+            groupId: groups.id,
+            userId: users.id,
+            name: users.name,
+            email: users.email,
+            status: users.status,
+            createdAt: users.createdAt,
+            updatedAt: users.updatedAt
+        })
+        .from(groups)
+        .leftJoin(
+            userGroups,
+            eq(userGroups.groupId, groups.id)
+        )
+        .leftJoin(
+            users,
+            eq(users.id, userGroups.userId)
+        )
+        .where(eq(groups.id, groupId));
+
+    if (rows.length === 0) {
+        throw new AppError(
+            404,
+            "NOT_FOUND",
+            "Group tidak ditemukan"
+        );
+    }
+
+    return rows.flatMap((row) => {
+        if (row.userId === null) {
+            return [];
+        }
+
+        return [{
+            id: row.userId,
+            name: row.name!,
+            email: row.email!,
+            status: row.status!,
+            createdAt: row.createdAt!,
+            updatedAt: row.updatedAt!
+        }];
+    });
+}

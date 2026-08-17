@@ -13,6 +13,7 @@ import {
     membershipRoutes
 } from "./modules/groups/routes.js";
 import { applicationRoutes } from "./modules/applications/routes.js";
+import { policyRoutes } from "./modules/policies/routes.js";
 
 function isFastifyValidationError(
     error: unknown
@@ -151,6 +152,10 @@ export function buildApp() {
     });
 
     app.register(applicationRoutes, {
+        prefix: "/admin/applications"
+    });
+
+    app.register(policyRoutes, {
         prefix: "/admin/applications"
     });
 

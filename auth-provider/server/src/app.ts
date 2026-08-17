@@ -8,6 +8,10 @@ import { env } from "./config/env.js";
 import { checkDatabase } from "./db/client.js";
 import { checkRabbitMQ } from "./messaging/rabbitmq.js";
 import { userRoutes } from "./modules/users/routes.js";
+import {
+    groupRoutes,
+    membershipRoutes
+} from "./modules/groups/routes.js";
 
 function isFastifyValidationError(
     error: unknown
@@ -134,6 +138,14 @@ export function buildApp() {
     });
 
     app.register(userRoutes, {
+        prefix: "/admin/users"
+    });
+
+    app.register(groupRoutes, {
+        prefix: "/admin/groups"
+    });
+
+    app.register(membershipRoutes, {
         prefix: "/admin/users"
     });
 

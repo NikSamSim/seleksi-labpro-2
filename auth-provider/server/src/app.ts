@@ -12,6 +12,7 @@ import {
     groupRoutes,
     membershipRoutes
 } from "./modules/groups/routes.js";
+import { applicationRoutes } from "./modules/applications/routes.js";
 
 function isFastifyValidationError(
     error: unknown
@@ -147,6 +148,10 @@ export function buildApp() {
 
     app.register(membershipRoutes, {
         prefix: "/admin/users"
+    });
+
+    app.register(applicationRoutes, {
+        prefix: "/admin/applications"
     });
 
     app.get("/health/live", async () => {

@@ -7,6 +7,7 @@ import { AppError, createErrorResponse } from "./http/errors.js";
 import { env } from "./config/env.js";
 import { checkDatabase } from "./db/client.js";
 import { checkRabbitMQ } from "./messaging/rabbitmq.js";
+import { userRoutes } from "./modules/users/routes.js";
 
 function isFastifyValidationError(
     error: unknown
@@ -97,6 +98,10 @@ export function buildApp() {
 
     app.register(cors, {
         origin: env.CONTROL_PANEL_ORIGIN
+    });
+
+    app.register(userRoutes, {
+        prefix: "/admin/users"
     });
 
     app.get("/health/live", async () => {

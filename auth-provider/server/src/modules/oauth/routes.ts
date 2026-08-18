@@ -12,16 +12,19 @@ import {
 
 import {
     authorizeQuerySchema,
-    tokenRequestSchema
+    tokenRequestSchema,
+    userinfoHeadersSchema
 } from "./schemas.js";
 
 import {
     exchangeAuthorizationCode,
     issueAuthorizationCode,
+    parseBearerToken,
     validateAuthorizationClient,
     validateAuthorizationRequest,
     validateTokenClient,
-    validateTokenGrantType
+    validateTokenGrantType,
+    validateUserinfoAccess
 } from "./service.js";
 
 function buildRedirectUrl(
@@ -249,6 +252,65 @@ export async function oauthRoutes(
             token_type: "Bearer",
             expires_in:
                 exchangeResult.expiresIn
+        };
+    });
+
+    app.get("/userinfo", async (request) => {
+        const headersCheck =
+            userinfoHeadersSchema.safeParse(
+                request.headers
+            );
+
+        if (!headersCheck.success) {
+            throw new AppError(
+                401,
+                "UNAUTHORIZED",
+                "Kredensial tidak valid"
+            );
+        }
+
+        const bearerCheck =
+            parseBearerToken(
+                headersCheck.data.authorization
+            );
+
+        if (bearerCheck.result === "invalid") {
+            throw new AppError(
+                401,
+                "UNAUTHORIZED",
+                "Kredensial tidak valid"
+            );
+        }
+
+        const accessCheck =
+            await validateUserinfoAccess({
+                accessToken:
+                    bearerCheck.accessToken,
+                clientId:
+                    headersCheck.data[
+                        "x-client-id"
+                    ],
+                clientSecret:
+                    headersCheck.data[
+                        "x-client-secret"
+                    ]
+            });
+
+        if (accessCheck.result === "invalid") {
+            throw new AppError(
+                401,
+                "UNAUTHORIZED",
+                "Kredensial tidak valid"
+            );
+        }
+
+        return {
+            sub: accessCheck.user.id,
+            name: accessCheck.user.name,
+            email: accessCheck.user.email,
+            groups: accessCheck.groups,
+            centralSessionId: accessCheck.centralSessionId,
+            clientId: accessCheck.application.clientId
         };
     });
 }

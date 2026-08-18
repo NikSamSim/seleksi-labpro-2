@@ -12,7 +12,9 @@ import {
     applicationRedirectUris,
     applications,
     authorizationCodes,
+    groups,
     ssoSessions,
+    userGroups,
     users
 } from "../../db/schema/index.js";
 import { env } from "../../config/env.js";
@@ -68,6 +70,40 @@ export type TokenGrantTypeCheck =
     | {
         result: "invalid";
         reason: "UNSUPPORTED_GRANT_TYPE";
+    };
+
+export type BearerTokenCheck =
+    | {
+        result: "valid";
+        accessToken: string;
+    }
+    | {
+        result: "invalid";
+    };
+
+export type ValidateUserinfoAccessInput = {
+    accessToken: string;
+    clientId: string;
+    clientSecret: string;
+};
+
+export type ValidateUserinfoAccessResult =
+    | {
+        result: "valid";
+        user: {
+            id: string;
+            name: string;
+            email: string;
+        };
+        application: {
+            id: string;
+            clientId: string;
+        };
+        centralSessionId: string;
+        groups: string[];
+    }
+    | {
+        result: "invalid";
     };
 
 export type ExchangeAuthorizationCodeInput = {
@@ -224,6 +260,182 @@ export function validateTokenGrantType(
 
     return {
         result: "valid"
+    };
+}
+
+export function parseBearerToken(
+    authorization: string
+): BearerTokenCheck {
+    const match =
+        /^Bearer ([A-Za-z0-9_-]+)$/i.exec(
+            authorization
+        );
+
+    if (!match) {
+        return {
+            result: "invalid"
+        };
+    }
+
+    return {
+        result: "valid",
+        accessToken: match[1]
+    };
+}
+
+export async function validateUserinfoAccess(
+    input: ValidateUserinfoAccessInput
+): Promise<ValidateUserinfoAccessResult> {
+    const tokenHash =
+        hashOpaqueValue(input.accessToken);
+
+    const now = new Date();
+
+    const [identity] = await db
+        .select({
+            userId: users.id,
+            userName: users.name,
+            userEmail: users.email,
+
+            applicationId:
+                applications.id,
+            clientId:
+                applications.clientId,
+            clientSecretHash:
+                applications.clientSecretHash,
+
+            centralSessionId:
+                ssoSessions.id
+        })
+        .from(accessTokens)
+        .innerJoin(
+            applications,
+            and(
+                eq(
+                    applications.id,
+                    accessTokens.applicationId
+                ),
+                eq(
+                    applications.clientId,
+                    input.clientId
+                )
+            )
+        )
+        .innerJoin(
+            ssoSessions,
+            and(
+                eq(
+                    ssoSessions.id,
+                    accessTokens.ssoSessionId
+                ),
+                eq(
+                    ssoSessions.userId,
+                    accessTokens.userId
+                )
+            )
+        )
+        .innerJoin(
+            users,
+            eq(
+                users.id,
+                accessTokens.userId
+            )
+        )
+        .where(
+            and(
+                eq(
+                    accessTokens.tokenHash,
+                    tokenHash
+                ),
+                eq(
+                    accessTokens.status,
+                    "active"
+                ),
+                gt(
+                    accessTokens.expiresAt,
+                    now
+                ),
+                isNull(
+                    accessTokens.revokedAt
+                ),
+
+                eq(
+                    applications.status,
+                    "active"
+                ),
+
+                eq(
+                    ssoSessions.status,
+                    "active"
+                ),
+                gt(
+                    ssoSessions.expiresAt,
+                    now
+                ),
+                isNull(
+                    ssoSessions.revokedAt
+                ),
+
+                eq(
+                    users.status,
+                    "active"
+                )
+            )
+        )
+        .limit(1);
+
+    if (!identity) {
+        return {
+            result: "invalid"
+        };
+    }
+
+    if (
+        !verifyClientSecret(
+            identity.clientSecretHash,
+            input.clientSecret
+        )
+    ) {
+        return {
+            result: "invalid"
+        };
+    }
+
+    const userGroupRows = await db
+        .select({
+            name: groups.name
+        })
+        .from(userGroups)
+        .innerJoin(
+            groups,
+            eq(
+                groups.id,
+                userGroups.groupId
+            )
+        )
+        .where(
+            eq(
+                userGroups.userId,
+                identity.userId
+            )
+        );
+
+    return {
+        result: "valid",
+        user: {
+            id: identity.userId,
+            name: identity.userName,
+            email: identity.userEmail
+        },
+        application: {
+            id: identity.applicationId,
+            clientId: identity.clientId
+        },
+        centralSessionId:
+            identity.centralSessionId,
+        groups: userGroupRows.map(
+            (group) => group.name
+        )
     };
 }
 

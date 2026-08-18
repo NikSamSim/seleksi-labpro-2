@@ -70,3 +70,22 @@ export const tokenRequestSchema = z.object({
 
 export type TokenRequest =
     z.infer<typeof tokenRequestSchema>;
+
+export const userinfoHeadersSchema = z.object({
+    authorization: z
+        .string()
+        .min(1),
+
+    "x-client-id": z
+        .string()
+        .min(1)
+        .max(255),
+
+    "x-client-secret": z
+        .string()
+        .min(1)
+        .max(512)
+});
+
+export type UserinfoHeaders =
+    z.infer<typeof userinfoHeadersSchema>;

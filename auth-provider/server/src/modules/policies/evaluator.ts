@@ -216,6 +216,8 @@ export type PrevalidatedPolicyEvaluationResult =
             | "USER_INACTIVE"
             | "INVALID_CENTRAL_SESSION"
             | "NO_ALLOW_POLICY";
+        userId: string | null;
+        centralSessionId: string | null;
     };
 
 export async function evaluatePrevalidatedPolicy(
@@ -288,14 +290,18 @@ export async function evaluatePrevalidatedPolicy(
     if (!result) {
         return {
             decision: "deny",
-            reason: "INVALID_CENTRAL_SESSION"
+            reason: "INVALID_CENTRAL_SESSION",
+            userId: null,
+            centralSessionId: null
         };
     }
 
     if (result.userStatus !== "active") {
         return {
             decision: "deny",
-            reason: "USER_INACTIVE"
+            reason: "USER_INACTIVE",
+            userId: result.userId,
+            centralSessionId: result.sessionId
         };
     }
 
@@ -308,14 +314,18 @@ export async function evaluatePrevalidatedPolicy(
     ) {
         return {
             decision: "deny",
-            reason: "INVALID_CENTRAL_SESSION"
+            reason: "INVALID_CENTRAL_SESSION",
+            userId: result.userId,
+            centralSessionId: result.sessionId
         };
     }
 
     if (!result.hasAllowPolicy) {
         return {
             decision: "deny",
-            reason: "NO_ALLOW_POLICY"
+            reason: "NO_ALLOW_POLICY",
+            userId: result.userId,
+            centralSessionId: result.sessionId
         };
     }
 

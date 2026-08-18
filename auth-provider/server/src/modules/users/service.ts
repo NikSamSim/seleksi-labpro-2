@@ -5,12 +5,13 @@ import { users } from "../../db/schema/index.js";
 import { AppError } from "../../http/errors.js";
 import { hashPassword } from "../../security/password.js";
 
+import { writeAudit } from "../audit/service.js";
 
 import type {
     CreateUserInput,
     UpdateUserInput,
-    UpdateUserStatusInput,
-    UpdateUserPasswordInput
+    UpdateUserPasswordInput,
+    UpdateUserStatusInput
 } from "./schemas.js";
 
 const safeUserColumns = {
@@ -20,6 +21,10 @@ const safeUserColumns = {
     status: users.status,
     createdAt: users.createdAt,
     updatedAt: users.updatedAt
+};
+
+type UserMutationContext = {
+    ipAddress?: string | null;
 };
 
 type PostgresErrorLike = {
@@ -80,7 +85,10 @@ export async function getUserById(userId: string) {
     return user;
 }
 
-export async function createUser(input: CreateUserInput) {
+export async function createUser(
+    input: CreateUserInput,
+    context: UserMutationContext
+) {
     const email = input.email
         .trim()
         .toLowerCase();
@@ -89,17 +97,34 @@ export async function createUser(input: CreateUserInput) {
         await hashPassword(input.password);
 
     try {
-        const [user] = await db
-            .insert(users)
-            .values({
-                name: input.name.trim(),
-                email,
-                passwordHash,
-                status: "active"
-            })
-            .returning(safeUserColumns);
+        return await db.transaction(async (tx) => {
+            const [user] = await tx
+                .insert(users)
+                .values({
+                    name: input.name.trim(),
+                    email,
+                    passwordHash,
+                    status: "active"
+                })
+                .returning(safeUserColumns);
 
-        return user;
+            await writeAudit(
+                {
+                    eventType: "user_created",
+                    actorId: null,
+                    userId: user.id,
+                    result: "success",
+                    metadata: {
+                        status: user.status
+                    },
+                    ipAddress:
+                        context.ipAddress ?? null
+                },
+                tx
+            );
+
+            return user;
+        });
     } catch (error) {
         if (isUserEmailConflict(error)) {
             throw new AppError(
@@ -115,7 +140,8 @@ export async function createUser(input: CreateUserInput) {
 
 export async function updateUser(
     userId: string,
-    input: UpdateUserInput
+    input: UpdateUserInput,
+    context: UserMutationContext
 ) {
     const updateData: {
         name?: string;
@@ -135,22 +161,49 @@ export async function updateUser(
             .toLowerCase();
     }
 
+    const changedFields: string[] = [];
+
+    if (input.name !== undefined) {
+        changedFields.push("name");
+    }
+
+    if (input.email !== undefined) {
+        changedFields.push("email");
+    }
+
     try {
-        const [user] = await db
-            .update(users)
-            .set(updateData)
-            .where(eq(users.id, userId))
-            .returning(safeUserColumns);
+        return await db.transaction(async (tx) => {
+            const [user] = await tx
+                .update(users)
+                .set(updateData)
+                .where(eq(users.id, userId))
+                .returning(safeUserColumns);
 
-        if (!user) {
-            throw new AppError(
-                404,
-                "NOT_FOUND",
-                "User tidak ditemukan"
+            if (!user) {
+                throw new AppError(
+                    404,
+                    "NOT_FOUND",
+                    "User tidak ditemukan"
+                );
+            }
+
+            await writeAudit(
+                {
+                    eventType: "user_updated",
+                    actorId: null,
+                    userId: user.id,
+                    result: "success",
+                    metadata: {
+                        changedFields
+                    },
+                    ipAddress:
+                        context.ipAddress ?? null
+                },
+                tx
             );
-        }
 
-        return user;
+            return user;
+        });
     } catch (error) {
         if (isUserEmailConflict(error)) {
             throw new AppError(
@@ -166,51 +219,84 @@ export async function updateUser(
 
 export async function updateUserStatus(
     userId: string,
-    input: UpdateUserStatusInput
+    input: UpdateUserStatusInput,
+    context: UserMutationContext
 ) {
-    const [user] = await db
-        .update(users)
-        .set({
-            status: input.status,
-            updatedAt: new Date()
-        })
-        .where(eq(users.id, userId))
-        .returning(safeUserColumns);
+    return db.transaction(async (tx) => {
+        const [user] = await tx
+            .update(users)
+            .set({
+                status: input.status,
+                updatedAt: new Date()
+            })
+            .where(eq(users.id, userId))
+            .returning(safeUserColumns);
 
-    if (!user) {
-        throw new AppError(
-            404,
-            "NOT_FOUND",
-            "User tidak ditemukan"
+        if (!user) {
+            throw new AppError(
+                404,
+                "NOT_FOUND",
+                "User tidak ditemukan"
+            );
+        }
+
+        await writeAudit(
+            {
+                eventType: "user_status_changed",
+                actorId: null,
+                userId: user.id,
+                result: "success",
+                metadata: {
+                    status: user.status
+                },
+                ipAddress:
+                    context.ipAddress ?? null
+            },
+            tx
         );
-    }
 
-    return user;
+        return user;
+    });
 }
 
 export async function updateUserPassword(
     userId: string,
-    input: UpdateUserPasswordInput
+    input: UpdateUserPasswordInput,
+    context: UserMutationContext
 ) {
     const passwordHash =
         await hashPassword(input.password);
 
-    const [user] = await db
-        .update(users)
-        .set({
-            passwordHash,
-            updatedAt: new Date()
-        })
-        .where(eq(users.id, userId))
-        .returning(safeUserColumns);
+    return db.transaction(async (tx) => {
+        const [user] = await tx
+            .update(users)
+            .set({
+                passwordHash,
+                updatedAt: new Date()
+            })
+            .where(eq(users.id, userId))
+            .returning(safeUserColumns);
 
-    if (!user) {
-        throw new AppError(
-            404,
-            "NOT_FOUND",
-            "User tidak ditemukan"
+        if (!user) {
+            throw new AppError(
+                404,
+                "NOT_FOUND",
+                "User tidak ditemukan"
+            );
+        }
+
+        await writeAudit(
+            {
+                eventType: "password_changed",
+                actorId: null,
+                userId: user.id,
+                result: "success",
+                ipAddress:
+                    context.ipAddress ?? null
+            },
+            tx
         );
-    }
 
-    return user;
+        return user;
+    });
 }

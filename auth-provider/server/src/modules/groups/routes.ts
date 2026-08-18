@@ -49,7 +49,12 @@ export async function groupRoutes(app: FastifyInstance) {
         const input =
             createGroupBodySchema.parse(request.body);
 
-        const group = await createGroup(input);
+        const group = await createGroup(
+            input,
+            {
+                ipAddress: request.ip
+            }
+        );
 
         return reply
             .code(201)
@@ -66,7 +71,13 @@ export async function groupRoutes(app: FastifyInstance) {
             updateGroupBodySchema.parse(request.body);
 
         const group =
-            await updateGroup(groupId, input);
+            await updateGroup(
+                groupId,
+                input,
+                {
+                    ipAddress: request.ip
+                }
+            );
 
         return {
             group
@@ -107,7 +118,10 @@ export async function membershipRoutes(
             const membership =
                 await addUserToGroup(
                     userId,
-                    input.groupId
+                    input.groupId,
+                    {
+                        ipAddress: request.ip
+                    }
                 );
 
             return reply
@@ -132,7 +146,10 @@ export async function membershipRoutes(
             const membership =
                 await removeUserFromGroup(
                     userId,
-                    groupId
+                    groupId,
+                    {
+                        ipAddress: request.ip
+                    }
                 );
 
             return {

@@ -8,6 +8,8 @@ import {
 } from "../../db/schema/index.js";
 import { AppError } from "../../http/errors.js";
 
+import { writeAudit } from "../audit/service.js";
+
 import type {
     CreateApplicationPolicyInput
 } from "./schemas.js";
@@ -22,6 +24,10 @@ const policyColumns = {
         applicationGroupPolicies.effect,
     createdAt:
         applicationGroupPolicies.createdAt
+};
+
+type PolicyMutationContext = {
+    ipAddress?: string | null;
 };
 
 type PostgresErrorLike = {
@@ -149,7 +155,8 @@ export async function listApplicationPolicies(
         return [
             {
                 id: row.policyId,
-                applicationId: row.applicationId,
+                applicationId:
+                    row.applicationId,
                 groupId: row.groupId,
                 groupName: row.groupName,
                 effect: row.effect,
@@ -161,19 +168,48 @@ export async function listApplicationPolicies(
 
 export async function createApplicationPolicy(
     applicationId: string,
-    input: CreateApplicationPolicyInput
+    input: CreateApplicationPolicyInput,
+    context: PolicyMutationContext
 ) {
     try {
-        const [policy] = await db
-            .insert(applicationGroupPolicies)
-            .values({
-                applicationId,
-                groupId: input.groupId,
-                effect: input.effect
-            })
-            .returning(policyColumns);
+        return await db.transaction(
+            async (tx) => {
+                const [policy] = await tx
+                    .insert(
+                        applicationGroupPolicies
+                    )
+                    .values({
+                        applicationId,
+                        groupId: input.groupId,
+                        effect: input.effect
+                    })
+                    .returning(policyColumns);
 
-        return policy;
+                await writeAudit(
+                    {
+                        eventType:
+                            "policy_changed",
+                        actorId: null,
+                        applicationId,
+                        result: "success",
+                        metadata: {
+                            action: "created",
+                            policyId: policy.id,
+                            groupId:
+                                policy.groupId,
+                            effect:
+                                policy.effect
+                        },
+                        ipAddress:
+                            context.ipAddress ??
+                            null
+                    },
+                    tx
+                );
+
+                return policy;
+            }
+        );
     } catch (error) {
         if (isPolicyConflict(error)) {
             throw new AppError(
@@ -183,7 +219,11 @@ export async function createApplicationPolicy(
             );
         }
 
-        if (isMissingPolicyApplication(error)) {
+        if (
+            isMissingPolicyApplication(
+                error
+            )
+        ) {
             throw new AppError(
                 404,
                 "NOT_FOUND",
@@ -205,31 +245,52 @@ export async function createApplicationPolicy(
 
 export async function removeApplicationPolicy(
     applicationId: string,
-    policyId: string
+    policyId: string,
+    context: PolicyMutationContext
 ) {
-    const [policy] = await db
-        .delete(applicationGroupPolicies)
-        .where(
-            and(
-                eq(
-                    applicationGroupPolicies.id,
-                    policyId
-                ),
-                eq(
-                    applicationGroupPolicies.applicationId,
-                    applicationId
+    return db.transaction(async (tx) => {
+        const [policy] = await tx
+            .delete(applicationGroupPolicies)
+            .where(
+                and(
+                    eq(
+                        applicationGroupPolicies.id,
+                        policyId
+                    ),
+                    eq(
+                        applicationGroupPolicies.applicationId,
+                        applicationId
+                    )
                 )
             )
-        )
-        .returning(policyColumns);
+            .returning(policyColumns);
 
-    if (!policy) {
-        throw new AppError(
-            404,
-            "NOT_FOUND",
-            "Policy tidak ditemukan"
+        if (!policy) {
+            throw new AppError(
+                404,
+                "NOT_FOUND",
+                "Policy tidak ditemukan"
+            );
+        }
+
+        await writeAudit(
+            {
+                eventType: "policy_changed",
+                actorId: null,
+                applicationId,
+                result: "success",
+                metadata: {
+                    action: "removed",
+                    policyId: policy.id,
+                    groupId: policy.groupId,
+                    effect: policy.effect
+                },
+                ipAddress:
+                    context.ipAddress ?? null
+            },
+            tx
         );
-    }
 
-    return policy;
+        return policy;
+    });
 }

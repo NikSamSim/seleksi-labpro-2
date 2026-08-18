@@ -134,7 +134,8 @@ export async function authRoutes(app: FastifyInstance) {
                 ipAddress: request.ip,
                 userAgent:
                     request.headers["user-agent"] ??
-                    null
+                    null,
+                logger: request.log
             }
         );
 

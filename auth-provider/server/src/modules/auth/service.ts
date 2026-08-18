@@ -4,6 +4,13 @@ import { db } from "../../db/client.js";
 import { users } from "../../db/schema/index.js";
 import { AppError } from "../../http/errors.js";
 import { hashPassword, verifyPassword } from "../../security/password.js";
+import {
+    writeAudit,
+    writeAuditBestEffort
+} from "../audit/service.js";
+import type {
+    AuditLogger
+} from "../audit/service.js";
 import { createCentralSession } from "../sessions/service.js";
 
 import type { LoginInput } from "./schemas.js";
@@ -11,6 +18,7 @@ import type { LoginInput } from "./schemas.js";
 type LoginContext = {
     ipAddress?: string | null;
     userAgent?: string | null;
+    logger: AuditLogger;
 };
 
 const dummyPasswordHashPromise =
@@ -51,16 +59,49 @@ export async function login(
         !passwordValid ||
         user.status !== "active"
     ) {
+        await writeAuditBestEffort(
+            {
+                eventType: "login_failed",
+                actorId: user?.id ?? null,
+                userId: user?.id ?? null,
+                result: "failure",
+                ipAddress:
+                    context.ipAddress ?? null
+            },
+            context.logger
+        );
         throwInvalidCredentials();
     }
 
     const {
         rawToken,
         session
-    } = await createCentralSession({
-        userId: user.id,
-        ipAddress: context.ipAddress,
-        userAgent: context.userAgent
+    } = await db.transaction(async (tx) => {
+        const centralSession =
+            await createCentralSession(
+                {
+                    userId: user.id,
+                    ipAddress: context.ipAddress,
+                    userAgent: context.userAgent
+                },
+                tx
+            );
+
+        await writeAudit(
+            {
+                eventType: "login_success",
+                actorId: user.id,
+                userId: user.id,
+                sessionId:
+                    centralSession.session.id,
+                result: "success",
+                ipAddress:
+                    context.ipAddress ?? null
+            },
+            tx
+        );
+
+        return centralSession;
     });
 
     return {

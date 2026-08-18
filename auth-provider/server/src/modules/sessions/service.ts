@@ -16,6 +16,9 @@ import {
     hashOpaqueValue
 } from "../../security/token.js";
 
+type SessionExecutor =
+    Pick<typeof db, "insert">;
+
 type CreateCentralSessionInput = {
     userId: string;
     ipAddress?: string | null;
@@ -36,7 +39,8 @@ const safeSessionColumns = {
 };
 
 export async function createCentralSession(
-    input: CreateCentralSessionInput
+    input: CreateCentralSessionInput,
+    executor: SessionExecutor = db
 ) {
     const rawToken = generateOpaqueValue();
     const sessionTokenHash =
@@ -49,7 +53,7 @@ export async function createCentralSession(
         env.SSO_SESSION_TTL_SECONDS * 1000
     );
 
-    const [session] = await db
+    const [session] = await executor
         .insert(ssoSessions)
         .values({
             userId: input.userId,

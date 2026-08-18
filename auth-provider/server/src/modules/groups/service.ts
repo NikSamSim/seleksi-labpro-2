@@ -8,6 +8,8 @@ import {
 } from "../../db/schema/index.js";
 import { AppError } from "../../http/errors.js";
 
+import { writeAudit } from "../audit/service.js";
+
 import type {
     CreateGroupInput,
     UpdateGroupInput
@@ -19,6 +21,10 @@ const groupColumns = {
     description: groups.description,
     createdAt: groups.createdAt,
     updatedAt: groups.updatedAt
+};
+
+type GroupMutationContext = {
+    ipAddress?: string | null;
 };
 
 type PostgresErrorLike = {
@@ -51,7 +57,8 @@ function isGroupNameConflict(error: unknown) {
 
     return (
         databaseError?.code === "23505" &&
-        databaseError.constraint_name === "groups_name_unique"
+        databaseError.constraint_name ===
+            "groups_name_unique"
     );
 }
 
@@ -92,21 +99,39 @@ export async function listGroups() {
 }
 
 export async function createGroup(
-    input: CreateGroupInput
+    input: CreateGroupInput,
+    context: GroupMutationContext
 ) {
     try {
-        const [group] = await db
-            .insert(groups)
-            .values({
-                name: input.name.trim(),
-                description:
-                    input.description === undefined
-                        ? null
-                        : input.description
-            })
-            .returning(groupColumns);
+        return await db.transaction(async (tx) => {
+            const [group] = await tx
+                .insert(groups)
+                .values({
+                    name: input.name.trim(),
+                    description:
+                        input.description === undefined
+                            ? null
+                            : input.description
+                })
+                .returning(groupColumns);
 
-        return group;
+            await writeAudit(
+                {
+                    eventType: "group_changed",
+                    actorId: null,
+                    result: "success",
+                    metadata: {
+                        action: "created",
+                        groupId: group.id
+                    },
+                    ipAddress:
+                        context.ipAddress ?? null
+                },
+                tx
+            );
+
+            return group;
+        });
     } catch (error) {
         if (isGroupNameConflict(error)) {
             throw new AppError(
@@ -122,7 +147,8 @@ export async function createGroup(
 
 export async function updateGroup(
     groupId: string,
-    input: UpdateGroupInput
+    input: UpdateGroupInput,
+    context: GroupMutationContext
 ) {
     const updateData: {
         name?: string;
@@ -137,25 +163,54 @@ export async function updateGroup(
     }
 
     if (input.description !== undefined) {
-        updateData.description = input.description;
+        updateData.description =
+            input.description;
+    }
+
+    const changedFields: string[] = [];
+
+    if (input.name !== undefined) {
+        changedFields.push("name");
+    }
+
+    if (input.description !== undefined) {
+        changedFields.push("description");
     }
 
     try {
-        const [group] = await db
-            .update(groups)
-            .set(updateData)
-            .where(eq(groups.id, groupId))
-            .returning(groupColumns);
+        return await db.transaction(async (tx) => {
+            const [group] = await tx
+                .update(groups)
+                .set(updateData)
+                .where(eq(groups.id, groupId))
+                .returning(groupColumns);
 
-        if (!group) {
-            throw new AppError(
-                404,
-                "NOT_FOUND",
-                "Group tidak ditemukan"
+            if (!group) {
+                throw new AppError(
+                    404,
+                    "NOT_FOUND",
+                    "Group tidak ditemukan"
+                );
+            }
+
+            await writeAudit(
+                {
+                    eventType: "group_changed",
+                    actorId: null,
+                    result: "success",
+                    metadata: {
+                        action: "updated",
+                        groupId: group.id,
+                        changedFields
+                    },
+                    ipAddress:
+                        context.ipAddress ?? null
+                },
+                tx
             );
-        }
 
-        return group;
+            return group;
+        });
     } catch (error) {
         if (isGroupNameConflict(error)) {
             throw new AppError(
@@ -213,23 +268,44 @@ export async function listUserGroups(
 
 export async function addUserToGroup(
     userId: string,
-    groupId: string
+    groupId: string,
+    context: GroupMutationContext
 ) {
     try {
-        const [membership] = await db
-            .insert(userGroups)
-            .values({
-                userId,
-                groupId
-            })
-            .returning({
-                id: userGroups.id,
-                userId: userGroups.userId,
-                groupId: userGroups.groupId,
-                createdAt: userGroups.createdAt
-            });
+        return await db.transaction(async (tx) => {
+            const [membership] = await tx
+                .insert(userGroups)
+                .values({
+                    userId,
+                    groupId
+                })
+                .returning({
+                    id: userGroups.id,
+                    userId: userGroups.userId,
+                    groupId: userGroups.groupId,
+                    createdAt:
+                        userGroups.createdAt
+                });
 
-        return membership;
+            await writeAudit(
+                {
+                    eventType:
+                        "membership_changed",
+                    actorId: null,
+                    userId,
+                    result: "success",
+                    metadata: {
+                        action: "added",
+                        groupId
+                    },
+                    ipAddress:
+                        context.ipAddress ?? null
+                },
+                tx
+            );
+
+            return membership;
+        });
     } catch (error) {
         if (isMembershipConflict(error)) {
             throw new AppError(
@@ -261,31 +337,56 @@ export async function addUserToGroup(
 
 export async function removeUserFromGroup(
     userId: string,
-    groupId: string
+    groupId: string,
+    context: GroupMutationContext
 ) {
-    const [membership] = await db
-        .delete(userGroups)
-        .where(
-            and(
-                eq(userGroups.userId, userId),
-                eq(userGroups.groupId, groupId)
+    return db.transaction(async (tx) => {
+        const [membership] = await tx
+            .delete(userGroups)
+            .where(
+                and(
+                    eq(
+                        userGroups.userId,
+                        userId
+                    ),
+                    eq(
+                        userGroups.groupId,
+                        groupId
+                    )
+                )
             )
-        )
-        .returning({
-            id: userGroups.id,
-            userId: userGroups.userId,
-            groupId: userGroups.groupId
-        });
+            .returning({
+                id: userGroups.id,
+                userId: userGroups.userId,
+                groupId: userGroups.groupId
+            });
 
-    if (!membership) {
-        throw new AppError(
-            404,
-            "NOT_FOUND",
-            "Membership tidak ditemukan"
+        if (!membership) {
+            throw new AppError(
+                404,
+                "NOT_FOUND",
+                "Membership tidak ditemukan"
+            );
+        }
+
+        await writeAudit(
+            {
+                eventType: "membership_changed",
+                actorId: null,
+                userId,
+                result: "success",
+                metadata: {
+                    action: "removed",
+                    groupId
+                },
+                ipAddress:
+                    context.ipAddress ?? null
+            },
+            tx
         );
-    }
 
-    return membership;
+        return membership;
+    });
 }
 
 export async function listGroupUsers(

@@ -30,6 +30,9 @@ import {
 import {
     verifyPkceChallenge
 } from "../../security/pkce.js";
+import {
+    writeAudit
+} from "../audit/service.js";
 
 export type AuthorizationClientCheck =
     | {
@@ -112,6 +115,7 @@ export type ExchangeAuthorizationCodeInput = {
     code: string;
     redirectUri: string;
     codeVerifier: string;
+    ipAddress?: string | null;
 };
 
 export type ExchangeAuthorizationCodeResult =
@@ -142,6 +146,7 @@ export type IssueAuthorizationCodeInput = {
     centralSessionId: string;
     redirectUri: string;
     codeChallenge: string;
+    ipAddress?: string | null;
 };
 
 export async function validateAuthorizationClient(
@@ -699,6 +704,22 @@ export async function exchangeAuthorizationCode(
                 expiresAt
             });
 
+        await writeAudit(
+            {
+                eventType: "token_issued",
+                actorId: consumedCode.userId,
+                userId: consumedCode.userId,
+                applicationId:
+                    consumedCode.applicationId,
+                sessionId:
+                    consumedCode.ssoSessionId,
+                result: "success",
+                ipAddress:
+                    input.ipAddress ?? null
+            },
+            tx
+        );
+
         return {
             result: "issued",
             accessToken,
@@ -721,25 +742,45 @@ export async function issueAuthorizationCode(
         env.AUTHORIZATION_CODE_TTL_SECONDS * 1000
     );
 
-    const [authorizationCode] = await db
-        .insert(authorizationCodes)
-        .values({
-            codeHash,
-            userId: input.userId,
-            applicationId: input.applicationId,
-            ssoSessionId: input.centralSessionId,
-            redirectUri: input.redirectUri,
-            codeChallenge: input.codeChallenge,
-            codeChallengeMethod: "S256",
-            expiresAt
-        })
-        .returning({
-            id: authorizationCodes.id,
-            expiresAt: authorizationCodes.expiresAt
-        });
+    return db.transaction(async (tx) => {
+        const [authorizationCode] = await tx
+            .insert(authorizationCodes)
+            .values({
+                codeHash,
+                userId: input.userId,
+                applicationId: input.applicationId,
+                ssoSessionId: input.centralSessionId,
+                redirectUri: input.redirectUri,
+                codeChallenge: input.codeChallenge,
+                codeChallengeMethod: "S256",
+                expiresAt
+            })
+            .returning({
+                id: authorizationCodes.id,
+                expiresAt:
+                    authorizationCodes.expiresAt
+            });
 
-    return {
-        rawCode,
-        authorizationCode
-    };
+        await writeAudit(
+            {
+                eventType:
+                    "authorization_code_issued",
+                actorId: input.userId,
+                userId: input.userId,
+                applicationId:
+                    input.applicationId,
+                sessionId:
+                    input.centralSessionId,
+                result: "success",
+                ipAddress:
+                    input.ipAddress ?? null
+            },
+            tx
+        );
+
+        return {
+            rawCode,
+            authorizationCode
+        };
+    });
 }

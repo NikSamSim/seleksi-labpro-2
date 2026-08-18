@@ -50,7 +50,10 @@ export async function policyRoutes(
             const policy =
                 await createApplicationPolicy(
                     applicationId,
-                    input
+                    input,
+                    {
+                        ipAddress: request.ip
+                    }
                 );
 
             return reply
@@ -75,7 +78,10 @@ export async function policyRoutes(
             const policy =
                 await removeApplicationPolicy(
                     applicationId,
-                    policyId
+                    policyId,
+                    {
+                        ipAddress: request.ip
+                    }
                 );
 
             return {

@@ -11,6 +11,8 @@ import {
     hashClientSecret
 } from "../../security/client-secret.js";
 
+import { writeAudit } from "../audit/service.js";
+
 import type {
     CreateApplicationInput,
     CreateRedirectUriInput,
@@ -24,16 +26,24 @@ const safeApplicationColumns = {
     clientId: applications.clientId,
     status: applications.status,
     launchUrl: applications.launchUrl,
-    logoutNotificationUrl: applications.logoutNotificationUrl,
+    logoutNotificationUrl:
+        applications.logoutNotificationUrl,
     createdAt: applications.createdAt,
     updatedAt: applications.updatedAt
 };
 
 const redirectUriColumns = {
     id: applicationRedirectUris.id,
-    applicationId: applicationRedirectUris.applicationId,
-    redirectUri: applicationRedirectUris.redirectUri,
-    createdAt: applicationRedirectUris.createdAt
+    applicationId:
+        applicationRedirectUris.applicationId,
+    redirectUri:
+        applicationRedirectUris.redirectUri,
+    createdAt:
+        applicationRedirectUris.createdAt
+};
+
+type ApplicationMutationContext = {
+    ipAddress?: string | null;
 };
 
 type PostgresErrorLike = {
@@ -120,28 +130,58 @@ export async function getApplicationById(
 }
 
 export async function createApplication(
-    input: CreateApplicationInput
+    input: CreateApplicationInput,
+    context: ApplicationMutationContext
 ) {
     const clientSecret = generateClientSecret();
     const clientSecretHash =
         hashClientSecret(clientSecret);
 
     try {
-        const [application] = await db
-            .insert(applications)
-            .values({
-                name: input.name.trim(),
-                clientId: input.clientId.trim(),
-                clientSecretHash,
-                status: "active",
-                launchUrl:
-                    input.launchUrl === undefined
-                        ? null
-                        : input.launchUrl,
-                logoutNotificationUrl:
-                    input.logoutNotificationUrl
-            })
-            .returning(safeApplicationColumns);
+        const application =
+            await db.transaction(async (tx) => {
+                const [createdApplication] =
+                    await tx
+                        .insert(applications)
+                        .values({
+                            name: input.name.trim(),
+                            clientId:
+                                input.clientId.trim(),
+                            clientSecretHash,
+                            status: "active",
+                            launchUrl:
+                                input.launchUrl ===
+                                undefined
+                                    ? null
+                                    : input.launchUrl,
+                            logoutNotificationUrl:
+                                input.logoutNotificationUrl
+                        })
+                        .returning(
+                            safeApplicationColumns
+                        );
+
+                await writeAudit(
+                    {
+                        eventType:
+                            "application_changed",
+                        actorId: null,
+                        applicationId:
+                            createdApplication.id,
+                        result: "success",
+                        metadata: {
+                            action: "created",
+                            status:
+                                createdApplication.status
+                        },
+                        ipAddress:
+                            context.ipAddress ?? null
+                    },
+                    tx
+                );
+
+                return createdApplication;
+            });
 
         return {
             application,
@@ -162,7 +202,8 @@ export async function createApplication(
 
 export async function updateApplication(
     applicationId: string,
-    input: UpdateApplicationInput
+    input: UpdateApplicationInput,
+    context: ApplicationMutationContext
 ) {
     const updateData: {
         name?: string;
@@ -179,34 +220,91 @@ export async function updateApplication(
     }
 
     if (input.clientId !== undefined) {
-        updateData.clientId = input.clientId.trim();
+        updateData.clientId =
+            input.clientId.trim();
     }
 
     if (input.launchUrl !== undefined) {
         updateData.launchUrl = input.launchUrl;
     }
 
-    if (input.logoutNotificationUrl !== undefined) {
+    if (
+        input.logoutNotificationUrl !==
+        undefined
+    ) {
         updateData.logoutNotificationUrl =
             input.logoutNotificationUrl;
     }
 
+    const changedFields: string[] = [];
+
+    if (input.name !== undefined) {
+        changedFields.push("name");
+    }
+
+    if (input.clientId !== undefined) {
+        changedFields.push("clientId");
+    }
+
+    if (input.launchUrl !== undefined) {
+        changedFields.push("launchUrl");
+    }
+
+    if (
+        input.logoutNotificationUrl !==
+        undefined
+    ) {
+        changedFields.push(
+            "logoutNotificationUrl"
+        );
+    }
+
     try {
-        const [application] = await db
-            .update(applications)
-            .set(updateData)
-            .where(eq(applications.id, applicationId))
-            .returning(safeApplicationColumns);
+        return await db.transaction(
+            async (tx) => {
+                const [application] =
+                    await tx
+                        .update(applications)
+                        .set(updateData)
+                        .where(
+                            eq(
+                                applications.id,
+                                applicationId
+                            )
+                        )
+                        .returning(
+                            safeApplicationColumns
+                        );
 
-        if (!application) {
-            throw new AppError(
-                404,
-                "NOT_FOUND",
-                "Application tidak ditemukan"
-            );
-        }
+                if (!application) {
+                    throw new AppError(
+                        404,
+                        "NOT_FOUND",
+                        "Application tidak ditemukan"
+                    );
+                }
 
-        return application;
+                await writeAudit(
+                    {
+                        eventType:
+                            "application_changed",
+                        actorId: null,
+                        applicationId:
+                            application.id,
+                        result: "success",
+                        metadata: {
+                            action: "updated",
+                            changedFields
+                        },
+                        ipAddress:
+                            context.ipAddress ?? null
+                    },
+                    tx
+                );
+
+                return application;
+            }
+        );
     } catch (error) {
         if (isClientIdConflict(error)) {
             throw new AppError(
@@ -222,26 +320,52 @@ export async function updateApplication(
 
 export async function updateApplicationStatus(
     applicationId: string,
-    input: UpdateApplicationStatusInput
+    input: UpdateApplicationStatusInput,
+    context: ApplicationMutationContext
 ) {
-    const [application] = await db
-        .update(applications)
-        .set({
-            status: input.status,
-            updatedAt: new Date()
-        })
-        .where(eq(applications.id, applicationId))
-        .returning(safeApplicationColumns);
+    return db.transaction(async (tx) => {
+        const [application] = await tx
+            .update(applications)
+            .set({
+                status: input.status,
+                updatedAt: new Date()
+            })
+            .where(
+                eq(
+                    applications.id,
+                    applicationId
+                )
+            )
+            .returning(safeApplicationColumns);
 
-    if (!application) {
-        throw new AppError(
-            404,
-            "NOT_FOUND",
-            "Application tidak ditemukan"
+        if (!application) {
+            throw new AppError(
+                404,
+                "NOT_FOUND",
+                "Application tidak ditemukan"
+            );
+        }
+
+        await writeAudit(
+            {
+                eventType:
+                    "application_changed",
+                actorId: null,
+                applicationId:
+                    application.id,
+                result: "success",
+                metadata: {
+                    action: "status_changed",
+                    status: application.status
+                },
+                ipAddress:
+                    context.ipAddress ?? null
+            },
+            tx
         );
-    }
 
-    return application;
+        return application;
+    });
 }
 
 export async function listApplicationRedirectUris(
@@ -298,18 +422,48 @@ export async function listApplicationRedirectUris(
 
 export async function addApplicationRedirectUri(
     applicationId: string,
-    input: CreateRedirectUriInput
+    input: CreateRedirectUriInput,
+    context: ApplicationMutationContext
 ) {
     try {
-        const [redirectUri] = await db
-            .insert(applicationRedirectUris)
-            .values({
-                applicationId,
-                redirectUri: input.redirectUri
-            })
-            .returning(redirectUriColumns);
+        return await db.transaction(
+            async (tx) => {
+                const [redirectUri] =
+                    await tx
+                        .insert(
+                            applicationRedirectUris
+                        )
+                        .values({
+                            applicationId,
+                            redirectUri:
+                                input.redirectUri
+                        })
+                        .returning(
+                            redirectUriColumns
+                        );
 
-        return redirectUri;
+                await writeAudit(
+                    {
+                        eventType:
+                            "application_changed",
+                        actorId: null,
+                        applicationId,
+                        result: "success",
+                        metadata: {
+                            action:
+                                "redirect_uri_added",
+                            redirectUriId:
+                                redirectUri.id
+                        },
+                        ipAddress:
+                            context.ipAddress ?? null
+                    },
+                    tx
+                );
+
+                return redirectUri;
+            }
+        );
     } catch (error) {
         if (isRedirectUriConflict(error)) {
             throw new AppError(
@@ -337,31 +491,53 @@ export async function addApplicationRedirectUri(
 
 export async function removeApplicationRedirectUri(
     applicationId: string,
-    redirectUriId: string
+    redirectUriId: string,
+    context: ApplicationMutationContext
 ) {
-    const [redirectUri] = await db
-        .delete(applicationRedirectUris)
-        .where(
-            and(
-                eq(
-                    applicationRedirectUris.id,
-                    redirectUriId
-                ),
-                eq(
-                    applicationRedirectUris.applicationId,
-                    applicationId
+    return db.transaction(async (tx) => {
+        const [redirectUri] = await tx
+            .delete(applicationRedirectUris)
+            .where(
+                and(
+                    eq(
+                        applicationRedirectUris.id,
+                        redirectUriId
+                    ),
+                    eq(
+                        applicationRedirectUris.applicationId,
+                        applicationId
+                    )
                 )
             )
-        )
-        .returning(redirectUriColumns);
+            .returning(redirectUriColumns);
 
-    if (!redirectUri) {
-        throw new AppError(
-            404,
-            "NOT_FOUND",
-            "Redirect URI tidak ditemukan"
+        if (!redirectUri) {
+            throw new AppError(
+                404,
+                "NOT_FOUND",
+                "Redirect URI tidak ditemukan"
+            );
+        }
+
+        await writeAudit(
+            {
+                eventType:
+                    "application_changed",
+                actorId: null,
+                applicationId,
+                result: "success",
+                metadata: {
+                    action:
+                        "redirect_uri_removed",
+                    redirectUriId:
+                        redirectUri.id
+                },
+                ipAddress:
+                    context.ipAddress ?? null
+            },
+            tx
         );
-    }
 
-    return redirectUri;
+        return redirectUri;
+    });
 }

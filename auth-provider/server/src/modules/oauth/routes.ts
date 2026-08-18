@@ -27,6 +27,10 @@ import {
     validateUserinfoAccess
 } from "./service.js";
 
+import {
+    writeAuditBestEffort
+} from "../audit/service.js";
+
 function buildRedirectUrl(
     redirectUri: string,
     params: Record<string, string>
@@ -155,6 +159,24 @@ export async function oauthRoutes(
         }
 
         if (policyResult.decision === "deny") {
+            await writeAuditBestEffort(
+                {
+                    eventType: "policy_denied",
+                    actorId: policyResult.userId,
+                    userId: policyResult.userId,
+                    applicationId:
+                        clientCheck.application.id,
+                    sessionId:
+                        policyResult.centralSessionId,
+                    result: "denied",
+                    metadata: {
+                        reason: policyResult.reason
+                    },
+                    ipAddress: request.ip
+                },
+                request.log
+            );
+
             return redirect(
                 reply,
                 buildRedirectUrl(
@@ -177,7 +199,8 @@ export async function oauthRoutes(
                 redirectUri:
                     validatedRedirectUri,
                 codeChallenge:
-                    query.code_challenge
+                    query.code_challenge,
+                ipAddress: request.ip
             });
 
         return redirect(
@@ -235,7 +258,8 @@ export async function oauthRoutes(
                 redirectUri:
                     body.redirect_uri,
                 codeVerifier:
-                    body.code_verifier
+                    body.code_verifier,
+                ipAddress: request.ip
             });
 
         if (exchangeResult.result === "invalid") {

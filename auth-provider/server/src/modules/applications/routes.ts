@@ -55,7 +55,12 @@ export async function applicationRoutes(
             );
 
         const result =
-            await createApplication(input);
+            await createApplication(
+                input,
+                {
+                    ipAddress: request.ip
+                }
+            );
 
         return reply
             .code(201)
@@ -78,7 +83,10 @@ export async function applicationRoutes(
             const application =
                 await updateApplication(
                     applicationId,
-                    input
+                    input,
+                    {
+                        ipAddress: request.ip
+                    }
                 );
 
             return {
@@ -103,7 +111,10 @@ export async function applicationRoutes(
             const application =
                 await updateApplicationStatus(
                     applicationId,
-                    input
+                    input,
+                    {
+                        ipAddress: request.ip
+                    }
                 );
 
             return {
@@ -147,7 +158,10 @@ export async function applicationRoutes(
             const redirectUri =
                 await addApplicationRedirectUri(
                     applicationId,
-                    input
+                    input,
+                    {
+                        ipAddress: request.ip
+                    }
                 );
 
             return reply
@@ -172,7 +186,10 @@ export async function applicationRoutes(
             const redirectUri =
                 await removeApplicationRedirectUri(
                     applicationId,
-                    redirectUriId
+                    redirectUriId,
+                    {
+                        ipAddress: request.ip
+                    }
                 );
 
             return {

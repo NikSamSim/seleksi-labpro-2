@@ -41,7 +41,12 @@ export async function userRoutes(app: FastifyInstance) {
         const input =
             createUserBodySchema.parse(request.body);
 
-        const user = await createUser(input);
+        const user = await createUser(
+            input,
+            {
+                ipAddress: request.ip
+            }
+        );
 
         return reply
             .code(201)
@@ -58,7 +63,13 @@ export async function userRoutes(app: FastifyInstance) {
             updateUserBodySchema.parse(request.body);
 
         const user =
-            await updateUser(userId, input);
+            await updateUser(
+                userId,
+                input,
+                {
+                    ipAddress: request.ip
+                }
+            );
 
         return {
             user
@@ -73,7 +84,13 @@ export async function userRoutes(app: FastifyInstance) {
             updateUserStatusBodySchema.parse(request.body);
 
         const user =
-            await updateUserStatus(userId, input);
+            await updateUserStatus(
+                userId,
+                input,
+                {
+                    ipAddress: request.ip
+                }
+            );
 
         return {
             user
@@ -88,7 +105,13 @@ export async function userRoutes(app: FastifyInstance) {
             updateUserPasswordBodySchema.parse(request.body);
 
         const user =
-            await updateUserPassword(userId, input);
+            await updateUserPassword(
+                userId,
+                input,
+                {
+                    ipAddress: request.ip
+                }
+            );
 
         return {
             user

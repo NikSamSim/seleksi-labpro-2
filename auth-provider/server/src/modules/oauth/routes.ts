@@ -10,11 +10,18 @@ import {
     evaluatePrevalidatedPolicy
 } from "../policies/evaluator.js";
 
-import { authorizeQuerySchema } from "./schemas.js";
 import {
+    authorizeQuerySchema,
+    tokenRequestSchema
+} from "./schemas.js";
+
+import {
+    exchangeAuthorizationCode,
     issueAuthorizationCode,
     validateAuthorizationClient,
-    validateAuthorizationRequest
+    validateAuthorizationRequest,
+    validateTokenClient,
+    validateTokenGrantType
 } from "./service.js";
 
 function buildRedirectUrl(
@@ -180,5 +187,68 @@ export async function oauthRoutes(
                 }
             )
         );
+    });
+
+    app.post("/token", async (request) => {
+        const body =
+            tokenRequestSchema.parse(
+                request.body
+            );
+
+        const grantTypeCheck =
+            validateTokenGrantType(
+                body.grant_type
+            );
+
+        if (grantTypeCheck.result === "invalid") {
+            throw new AppError(
+                400,
+                "INVALID_GRANT",
+                "Authorization grant tidak valid"
+            );
+        }
+
+        const clientCheck =
+            await validateTokenClient(
+                body.client_id,
+                body.client_secret
+            );
+
+        if (clientCheck.result === "invalid") {
+            throw new AppError(
+                401,
+                "INVALID_CLIENT",
+                "Client tidak valid"
+            );
+        }
+
+        const exchangeResult =
+            await exchangeAuthorizationCode({
+                applicationId:
+                    clientCheck.application.id,
+                clientId:
+                    clientCheck.application.clientId,
+                code: body.code,
+                redirectUri:
+                    body.redirect_uri,
+                codeVerifier:
+                    body.code_verifier
+            });
+
+        if (exchangeResult.result === "invalid") {
+            throw new AppError(
+                400,
+                "INVALID_GRANT",
+                "Authorization grant tidak valid"
+            );
+        }
+
+        return {
+            access_token:
+                exchangeResult.accessToken,
+            token_type: "Bearer",
+            expires_in:
+                exchangeResult.expiresIn
+        };
     });
 }

@@ -1,20 +1,33 @@
 import {
     and,
-    eq
+    eq,
+    exists,
+    gt,
+    isNull
 } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import {
+    accessTokens,
     applicationRedirectUris,
-    applications
+    applications,
+    authorizationCodes,
+    ssoSessions,
+    users
 } from "../../db/schema/index.js";
 import { env } from "../../config/env.js";
-import { authorizationCodes } from "../../db/schema/index.js";
 import {
     generateOpaqueValue,
     hashOpaqueValue
 } from "../../security/token.js";
 import type { AuthorizeQuery } from "./schemas.js";
+import {
+    verifyClientSecret
+} from "../../security/client-secret.js";
+
+import {
+    verifyPkceChallenge
+} from "../../security/pkce.js";
 
 export type AuthorizationClientCheck =
     | {
@@ -30,6 +43,49 @@ export type AuthorizationClientCheck =
             | "APPLICATION_NOT_FOUND"
             | "APPLICATION_INACTIVE"
             | "INVALID_REDIRECT_URI";
+    };
+
+export type TokenClientCheck =
+    | {
+        result: "valid";
+        application: {
+            id: string;
+            clientId: string;
+        };
+    }
+    | {
+        result: "invalid";
+        reason:
+            | "APPLICATION_NOT_FOUND"
+            | "APPLICATION_INACTIVE"
+            | "INVALID_CLIENT_SECRET";
+    };
+
+export type TokenGrantTypeCheck =
+    | {
+        result: "valid";
+    }
+    | {
+        result: "invalid";
+        reason: "UNSUPPORTED_GRANT_TYPE";
+    };
+
+export type ExchangeAuthorizationCodeInput = {
+    applicationId: string;
+    clientId: string;
+    code: string;
+    redirectUri: string;
+    codeVerifier: string;
+};
+
+export type ExchangeAuthorizationCodeResult =
+    | {
+        result: "issued";
+        accessToken: string;
+        expiresIn: number;
+    }
+    | {
+        result: "invalid";
     };
 
 export type AuthorizationRequestCheck =
@@ -154,6 +210,290 @@ export function validateAuthorizationRequest(
     return {
         result: "valid"
     };
+}
+
+export function validateTokenGrantType(
+    grantType: string
+): TokenGrantTypeCheck {
+    if (grantType !== "authorization_code") {
+        return {
+            result: "invalid",
+            reason: "UNSUPPORTED_GRANT_TYPE"
+        };
+    }
+
+    return {
+        result: "valid"
+    };
+}
+
+export async function validateTokenClient(
+    clientId: string,
+    clientSecret: string
+): Promise<TokenClientCheck> {
+    const [application] = await db
+        .select({
+            id: applications.id,
+            clientId: applications.clientId,
+            clientSecretHash:
+                applications.clientSecretHash,
+            status: applications.status
+        })
+        .from(applications)
+        .where(
+            eq(
+                applications.clientId,
+                clientId
+            )
+        )
+        .limit(1);
+
+    if (!application) {
+        return {
+            result: "invalid",
+            reason: "APPLICATION_NOT_FOUND"
+        };
+    }
+
+    if (application.status !== "active") {
+        return {
+            result: "invalid",
+            reason: "APPLICATION_INACTIVE"
+        };
+    }
+
+    if (
+        !verifyClientSecret(
+            application.clientSecretHash,
+            clientSecret
+        )
+    ) {
+        return {
+            result: "invalid",
+            reason: "INVALID_CLIENT_SECRET"
+        };
+    }
+
+    return {
+        result: "valid",
+        application: {
+            id: application.id,
+            clientId: application.clientId
+        }
+    };
+}
+
+export async function exchangeAuthorizationCode(
+    input: ExchangeAuthorizationCodeInput
+): Promise<ExchangeAuthorizationCodeResult> {
+    const codeHash =
+        hashOpaqueValue(input.code);
+
+    return db.transaction(async (tx) => {
+        const now = new Date();
+
+        const [authorizationCode] =
+            await tx
+                .select({
+                    id: authorizationCodes.id,
+                    userId:
+                        authorizationCodes.userId,
+                    applicationId:
+                        authorizationCodes.applicationId,
+                    ssoSessionId:
+                        authorizationCodes.ssoSessionId,
+                    codeChallenge:
+                        authorizationCodes.codeChallenge
+                })
+                .from(authorizationCodes)
+                .where(
+                    and(
+                        eq(
+                            authorizationCodes.codeHash,
+                            codeHash
+                        ),
+                        eq(
+                            authorizationCodes.applicationId,
+                            input.applicationId
+                        ),
+                        eq(
+                            authorizationCodes.redirectUri,
+                            input.redirectUri
+                        ),
+                        eq(
+                            authorizationCodes.codeChallengeMethod,
+                            "S256"
+                        ),
+                        isNull(
+                            authorizationCodes.usedAt
+                        ),
+                        gt(
+                            authorizationCodes.expiresAt,
+                            now
+                        )
+                    )
+                )
+                .limit(1);
+
+        if (!authorizationCode) {
+            return {
+                result: "invalid"
+            };
+        }
+
+        if (
+            !verifyPkceChallenge(
+                input.codeVerifier,
+                authorizationCode.codeChallenge
+            )
+        ) {
+            return {
+                result: "invalid"
+            };
+        }
+
+        const validCentralSession = tx
+            .select({
+                id: ssoSessions.id
+            })
+            .from(ssoSessions)
+            .innerJoin(
+                users,
+                eq(
+                    users.id,
+                    ssoSessions.userId
+                )
+            )
+            .where(
+                and(
+                    eq(
+                        ssoSessions.id,
+                        authorizationCode.ssoSessionId
+                    ),
+                    eq(
+                        ssoSessions.userId,
+                        authorizationCode.userId
+                    ),
+                    eq(
+                        ssoSessions.status,
+                        "active"
+                    ),
+                    gt(
+                        ssoSessions.expiresAt,
+                        now
+                    ),
+                    isNull(
+                        ssoSessions.revokedAt
+                    ),
+                    eq(
+                        users.status,
+                        "active"
+                    )
+                )
+            );
+
+        const activeApplication = tx
+            .select({
+                id: applications.id
+            })
+            .from(applications)
+            .where(
+                and(
+                    eq(
+                        applications.id,
+                        input.applicationId
+                    ),
+                    eq(
+                        applications.clientId,
+                        input.clientId
+                    ),
+                    eq(
+                        applications.status,
+                        "active"
+                    )
+                )
+            );
+
+        const [consumedCode] =
+            await tx
+                .update(authorizationCodes)
+                .set({
+                    usedAt: now
+                })
+                .where(
+                    and(
+                        eq(
+                            authorizationCodes.id,
+                            authorizationCode.id
+                        ),
+                        eq(
+                            authorizationCodes.applicationId,
+                            input.applicationId
+                        ),
+                        eq(
+                            authorizationCodes.redirectUri,
+                            input.redirectUri
+                        ),
+                        isNull(
+                            authorizationCodes.usedAt
+                        ),
+                        gt(
+                            authorizationCodes.expiresAt,
+                            now
+                        ),
+                        exists(
+                            validCentralSession
+                        ),
+                        exists(
+                            activeApplication
+                        )
+                    )
+                )
+                .returning({
+                    userId:
+                        authorizationCodes.userId,
+                    applicationId:
+                        authorizationCodes.applicationId,
+                    ssoSessionId:
+                        authorizationCodes.ssoSessionId
+                });
+
+        if (!consumedCode) {
+            return {
+                result: "invalid"
+            };
+        }
+
+        const accessToken =
+            generateOpaqueValue();
+
+        const tokenHash =
+            hashOpaqueValue(accessToken);
+
+        const expiresAt = new Date(
+            now.getTime() +
+            env.ACCESS_TOKEN_TTL_SECONDS * 1000
+        );
+
+        await tx
+            .insert(accessTokens)
+            .values({
+                tokenHash,
+                userId: consumedCode.userId,
+                applicationId:
+                    consumedCode.applicationId,
+                ssoSessionId:
+                    consumedCode.ssoSessionId,
+                expiresAt
+            });
+
+        return {
+            result: "issued",
+            accessToken,
+            expiresIn:
+                env.ACCESS_TOKEN_TTL_SECONDS
+        };
+    });
 }
 
 export async function issueAuthorizationCode(

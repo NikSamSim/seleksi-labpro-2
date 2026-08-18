@@ -17,6 +17,7 @@ import {
 import { applicationRoutes } from "./modules/applications/routes.js";
 import { policyRoutes } from "./modules/policies/routes.js";
 import { authRoutes } from "./modules/auth/routes.js";
+import { oauthRoutes } from "./modules/oauth/routes.js";
 
 function isFastifyValidationError(
     error: unknown
@@ -154,6 +155,7 @@ export function buildApp() {
     app.register(formbody);
 
     app.register(authRoutes);
+    app.register(oauthRoutes);
 
     app.register(userRoutes, {
         prefix: "/admin/users"

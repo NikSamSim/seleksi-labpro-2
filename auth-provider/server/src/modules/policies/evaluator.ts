@@ -14,6 +14,8 @@ import {
     users
 } from "../../db/schema/index.js";
 
+import { hashOpaqueValue } from "../../security/token.js";
+
 export type EvaluatePolicyInput = {
     userId: string;
     clientId: string;
@@ -194,5 +196,132 @@ export async function evaluatePolicy(
     return {
         decision: "allow",
         applicationId: result.applicationId
+    };
+}
+
+export type EvaluatePrevalidatedPolicyInput = {
+    rawSessionToken: string;
+    applicationId: string;
+};
+
+export type PrevalidatedPolicyEvaluationResult =
+    | {
+        decision: "allow";
+        userId: string;
+        centralSessionId: string;
+    }
+    | {
+        decision: "deny";
+        reason:
+            | "USER_INACTIVE"
+            | "INVALID_CENTRAL_SESSION"
+            | "NO_ALLOW_POLICY";
+    };
+
+export async function evaluatePrevalidatedPolicy(
+    input: EvaluatePrevalidatedPolicyInput
+): Promise<PrevalidatedPolicyEvaluationResult> {
+    const sessionTokenHash =
+        hashOpaqueValue(input.rawSessionToken);
+
+    const allowPolicyQuery = db
+        .select({
+            id: userGroups.id
+        })
+        .from(userGroups)
+        .innerJoin(
+            applicationGroupPolicies,
+            and(
+                eq(
+                    applicationGroupPolicies.groupId,
+                    userGroups.groupId
+                ),
+                eq(
+                    applicationGroupPolicies.applicationId,
+                    input.applicationId
+                ),
+                eq(
+                    applicationGroupPolicies.effect,
+                    "allow"
+                )
+            )
+        )
+        .where(
+            eq(
+                userGroups.userId,
+                ssoSessions.userId
+            )
+        )
+        .limit(1);
+
+    const [result] = await db
+        .select({
+            userId: users.id,
+            userStatus: users.status,
+
+            sessionId: ssoSessions.id,
+            sessionStatus: ssoSessions.status,
+            sessionExpiresAt:
+                ssoSessions.expiresAt,
+            sessionRevokedAt:
+                ssoSessions.revokedAt,
+
+            hasAllowPolicy:
+                exists(allowPolicyQuery)
+        })
+        .from(ssoSessions)
+        .innerJoin(
+            users,
+            eq(
+                users.id,
+                ssoSessions.userId
+            )
+        )
+        .where(
+            eq(
+                ssoSessions.sessionTokenHash,
+                sessionTokenHash
+            )
+        )
+        .limit(1);
+
+    if (!result) {
+        return {
+            decision: "deny",
+            reason: "INVALID_CENTRAL_SESSION"
+        };
+    }
+
+    if (result.userStatus !== "active") {
+        return {
+            decision: "deny",
+            reason: "USER_INACTIVE"
+        };
+    }
+
+    const now = new Date();
+
+    if (
+        result.sessionStatus !== "active" ||
+        result.sessionRevokedAt !== null ||
+        result.sessionExpiresAt <= now
+    ) {
+        return {
+            decision: "deny",
+            reason: "INVALID_CENTRAL_SESSION"
+        };
+    }
+
+    if (!result.hasAllowPolicy) {
+        return {
+            decision: "deny",
+            reason: "NO_ALLOW_POLICY"
+        };
+    }
+
+    return {
+        decision: "allow",
+        userId: result.userId,
+        centralSessionId: result.sessionId
     };
 }

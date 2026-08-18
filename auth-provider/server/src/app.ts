@@ -1,5 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import cookie from "@fastify/cookie";
+import formbody from "@fastify/formbody";
 
 import { ZodError } from "zod";
 
@@ -14,6 +16,7 @@ import {
 } from "./modules/groups/routes.js";
 import { applicationRoutes } from "./modules/applications/routes.js";
 import { policyRoutes } from "./modules/policies/routes.js";
+import { authRoutes } from "./modules/auth/routes.js";
 
 function isFastifyValidationError(
     error: unknown
@@ -146,6 +149,11 @@ export function buildApp() {
             "DELETE"
         ]
     });
+
+    app.register(cookie);
+    app.register(formbody);
+
+    app.register(authRoutes);
 
     app.register(userRoutes, {
         prefix: "/admin/users"

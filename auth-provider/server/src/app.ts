@@ -12,6 +12,7 @@ import { checkRabbitMQ } from "./messaging/rabbitmq.js";
 import { adminRoutes } from "./modules/admin/routes.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { oauthRoutes } from "./modules/oauth/routes.js";
+import { mfaRoutes } from "./modules/mfa/routes.js";
 
 function isFastifyValidationError(
     error: unknown
@@ -150,6 +151,7 @@ export function buildApp() {
     app.register(formbody);
 
     app.register(authRoutes);
+    app.register(mfaRoutes);
     app.register(oauthRoutes);
 
     app.register(adminRoutes, {

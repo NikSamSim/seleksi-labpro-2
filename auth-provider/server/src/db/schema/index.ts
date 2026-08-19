@@ -5,3 +5,4 @@ export * from "./sessions.js";
 export * from "./oauth.js";
 export * from "./audit.js";
 export * from "./events.js";
+export * from "./mfa.js";

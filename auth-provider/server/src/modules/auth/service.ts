@@ -25,11 +25,17 @@ import {
     getCentralSessionByRawToken
 } from "../sessions/service.js";
 
+import {
+    createMfaChallenge,
+    getUserMfaStatus
+} from "../mfa/service.js";
+
 import type { LoginInput } from "./schemas.js";
 
 type LoginContext = {
     ipAddress?: string | null;
     userAgent?: string | null;
+    returnTo?: string;
     logger: AuditLogger;
 };
 
@@ -90,6 +96,27 @@ export async function login(
         throwInvalidCredentials();
     }
 
+    const mfaStatus = await getUserMfaStatus(user.id);
+
+    if (mfaStatus.enabled) {
+        const {
+            rawToken: rawChallengeToken
+        } = await createMfaChallenge({
+            userId: user.id,
+            returnTo: context.returnTo
+        });
+
+        return {
+            status: "mfa_required" as const,
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email
+            },
+            rawChallengeToken
+        };
+    }
+
     const {
         rawToken,
         session
@@ -124,6 +151,7 @@ export async function login(
     });
 
     return {
+        status: "authenticated" as const,
         user: {
             id: user.id,
             name: user.name,

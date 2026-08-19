@@ -27,7 +27,10 @@ export type AuditEventType =
     | "group_changed"
     | "membership_changed"
     | "application_changed"
-    | "policy_changed";
+    | "policy_changed"
+    | "mfa_enrolled"
+    | "mfa_success"
+    | "mfa_failed";
 
 export type AuditResult =
     | "success"

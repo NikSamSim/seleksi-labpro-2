@@ -11,7 +11,10 @@ import {
     logoutAdmin,
     type AdminSession
 } from "./api/admin";
-import { ApiError } from "./api/client";
+import {
+    API_BASE_URL,
+    ApiError
+} from "./api/client";
 
 import {
     createUser,
@@ -1373,6 +1376,10 @@ function App() {
                         </strong>{" "}
                         ({adminSession.user.email})
                     </p>
+
+                    <a href={`${API_BASE_URL}/security/mfa`}>
+                        Manage MFA
+                    </a>{" "}
 
                     <button
                         type="button"

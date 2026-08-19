@@ -35,7 +35,21 @@ const schema = z.object({
     APP_B_LAUNCH_URL: z.string().url(),
     APP_B_LOGOUT_NOTIFICATION_URL: z.string().url(),
 
-    SEED_USER_PASSWORD: z.string().min(1)
+    SEED_USER_PASSWORD: z.string().min(1),
+
+    MFA_ISSUER: z.string().min(1),
+    MFA_PENDING_COOKIE_NAME: z.string().min(1),
+    MFA_CHALLENGE_TTL_SECONDS: z.coerce.number().int().positive(),
+    MFA_ENCRYPTION_KEY_BASE64: z.string().min(1).refine(
+        (value) => {
+            const decoded = Buffer.from(value, "base64");
+
+            return decoded.length === 32 && decoded.toString("base64") === value;
+        },
+        {
+            message: "MFA_ENCRYPTION_KEY_BASE64 must be a valid Base64-encoded 32-byte key"
+        }
+    )
 });
 
 export const env = schema.parse(process.env);

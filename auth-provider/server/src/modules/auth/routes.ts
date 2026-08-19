@@ -166,9 +166,31 @@ export async function authRoutes(app: FastifyInstance) {
                 userAgent:
                     request.headers["user-agent"] ??
                     null,
+                returnTo,
                 logger: request.log
             }
         );
+
+        if (result.status === "mfa_required") {
+            reply.setCookie(
+                env.MFA_PENDING_COOKIE_NAME,
+                result.rawChallengeToken,
+                {
+                    httpOnly: true,
+                    sameSite: "lax",
+                    secure:
+                        env.NODE_ENV === "production",
+                    path: "/",
+                    maxAge:
+                        env.MFA_CHALLENGE_TTL_SECONDS
+                }
+            );
+
+            return reply
+                .code(303)
+                .header("location", "/login/mfa")
+                .send();
+        }
 
         reply.setCookie(
             env.SSO_COOKIE_NAME,

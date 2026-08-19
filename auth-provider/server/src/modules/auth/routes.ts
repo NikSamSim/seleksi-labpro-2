@@ -10,15 +10,29 @@ import {
 import { login, logoutSso } from "./service.js";
 import { validateCentralSession } from "../sessions/service.js";
 
+
+const controlPanelOrigin = new URL(env.CONTROL_PANEL_ORIGIN).origin;
+
+function resolveSafeReturnTo(
+    returnTo: string | undefined
+) {
+    if (isSafeReturnTo(returnTo)) {
+        return returnTo;
+    }
+
+    if (returnTo === controlPanelOrigin) {
+        return returnTo;
+    }
+
+    return undefined;
+}
+
 export async function authRoutes(app: FastifyInstance) {
     app.get("/login", async (request, reply) => {
         const query =
             loginQuerySchema.parse(request.query);
 
-        const returnTo =
-            isSafeReturnTo(query.returnTo)
-                ? query.returnTo
-                : undefined;
+        const returnTo = resolveSafeReturnTo(query.returnTo);
 
         const action = returnTo
             ? `/login?returnTo=${encodeURIComponent(returnTo)}`
@@ -140,10 +154,7 @@ export async function authRoutes(app: FastifyInstance) {
         const query =
             loginQuerySchema.parse(request.query);
 
-        const returnTo =
-            isSafeReturnTo(query.returnTo)
-                ? query.returnTo
-                : undefined;
+        const returnTo = resolveSafeReturnTo(query.returnTo);
 
         const input =
             loginBodySchema.parse(request.body);

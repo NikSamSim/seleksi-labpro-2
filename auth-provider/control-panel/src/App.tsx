@@ -6,8 +6,8 @@ import {
 } from "react";
 
 import {
+    getAdminLoginUrl,
     getAdminSession,
-    loginAdmin,
     logoutAdmin,
     type AdminSession
 } from "./api/admin";
@@ -97,24 +97,6 @@ function App() {
         adminSession,
         setAdminSession
     ] = useState<AdminSession | null>(null);
-
-    const [
-        loginInput,
-        setLoginInput
-    ] = useState({
-        email: "",
-        password: ""
-    });
-
-    const [
-        loginSubmitting,
-        setLoginSubmitting
-    ] = useState(false);
-
-    const [
-        loginError,
-        setLoginError
-    ] = useState<string | null>(null);
 
     const [
         authError,
@@ -405,6 +387,16 @@ function App() {
     }, []);
 
     useEffect(() => {
+        if (authState !== "signed-out") {
+            return;
+        }
+
+        window.location.assign(
+            getAdminLoginUrl()
+        );
+    }, [authState]);
+
+    useEffect(() => {
         if (authState !== "authenticated") {
             return;
         }
@@ -477,52 +469,6 @@ function App() {
         void loadApplications();
     }, [authState]);
 
-    async function handleAdminLogin(
-        event: FormEvent<HTMLFormElement>
-    ) {
-        event.preventDefault();
-
-        setLoginSubmitting(true);
-        setLoginError(null);
-
-        try {
-            const session =
-                await loginAdmin(loginInput);
-
-            setAdminSession(session);
-
-            setLoginInput((current) => ({
-                ...current,
-                password: ""
-            }));
-
-            setLoading(true);
-            setGroupsListLoading(true);
-            setApplicationsLoading(true);
-
-            setAuthState("authenticated");
-        } catch (error) {
-            if (
-                error instanceof ApiError &&
-                error.status === 403
-            ) {
-                setLoginError(
-                    "User berhasil login, tetapi tidak memiliki akses administrator."
-                );
-                setAuthState("forbidden");
-                return;
-            }
-
-            setLoginError(
-                error instanceof Error
-                    ? error.message
-                    : "Login gagal"
-            );
-        } finally {
-            setLoginSubmitting(false);
-        }
-    }
-
     async function handleAdminLogout() {
         setAuthError(null);
 
@@ -542,10 +488,6 @@ function App() {
         setUsers([]);
         setGroups([]);
         setApplications([]);
-        setLoginInput({
-            email: "",
-            password: ""
-        });
         setAuthState("signed-out");
     }
 
@@ -1353,64 +1295,9 @@ function App() {
                 <h1>Labpro Auth Provider</h1>
                 <h2>Control Panel</h2>
 
-                <h3>Administrator Login</h3>
-
-                <form onSubmit={handleAdminLogin}>
-                    <div>
-                        <label htmlFor="admin-email">
-                            Email
-                        </label>
-
-                        <input
-                            id="admin-email"
-                            type="email"
-                            value={loginInput.email}
-                            onChange={(event) =>
-                                setLoginInput({
-                                    ...loginInput,
-                                    email:
-                                        event.target.value
-                                })
-                            }
-                            required
-                        />
-                    </div>
-
-                    <div>
-                        <label htmlFor="admin-password">
-                            Password
-                        </label>
-
-                        <input
-                            id="admin-password"
-                            type="password"
-                            value={loginInput.password}
-                            onChange={(event) =>
-                                setLoginInput({
-                                    ...loginInput,
-                                    password:
-                                        event.target.value
-                                })
-                            }
-                            required
-                        />
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={loginSubmitting}
-                    >
-                        {loginSubmitting
-                            ? "Signing in..."
-                            : "Sign In"}
-                    </button>
-
-                    {loginError && (
-                        <p>
-                            Login gagal: {loginError}
-                        </p>
-                    )}
-                </form>
+                <p>
+                    Mengarahkan ke Central Login...
+                </p>
             </main>
         );
     }

@@ -1,4 +1,7 @@
-import { apiRequest } from "./client";
+import {
+    API_BASE_URL,
+    apiRequest
+} from "./client";
 
 export type AdminSession = {
     user: {
@@ -11,29 +14,20 @@ export type AdminSession = {
     };
 };
 
-type AdminLoginInput = {
-    email: string;
-    password: string;
-};
-
 export async function getAdminSession() {
     return apiRequest<AdminSession>(
         "/admin/me"
     );
 }
 
-export async function loginAdmin(
-    input: AdminLoginInput
-) {
-    await apiRequest(
-        "/login",
-        {
-            method: "POST",
-            body: JSON.stringify(input)
-        }
-    );
+export function getAdminLoginUrl() {
+    const returnTo =
+        window.location.origin;
 
-    return getAdminSession();
+    return (
+        `${API_BASE_URL}/login` +
+        `?returnTo=${encodeURIComponent(returnTo)}`
+    );
 }
 
 export async function logoutAdmin() {

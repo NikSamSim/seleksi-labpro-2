@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import {
@@ -12,6 +12,8 @@ import {
 } from "../../security/client-secret.js";
 
 import { writeAudit } from "../audit/service.js";
+import { writeApplicationOutboxEvents } from "../events/service.js";
+import { revokeApplicationAccess } from "../revocation/service.js";
 
 import type {
     CreateApplicationInput,
@@ -331,35 +333,73 @@ export async function updateApplicationStatus(
                 updatedAt: new Date()
             })
             .where(
-                eq(
-                    applications.id,
-                    applicationId
+                and(
+                    eq(applications.id, applicationId),
+                    ne(applications.status, input.status)
                 )
             )
             .returning(safeApplicationColumns);
 
         if (!application) {
-            throw new AppError(
-                404,
-                "NOT_FOUND",
-                "Application tidak ditemukan"
+            const [existingApplication] = await tx
+                .select(safeApplicationColumns)
+                .from(applications)
+                .where(eq(applications.id, applicationId))
+                .limit(1);
+
+            if (!existingApplication) {
+                throw new AppError(
+                    404,
+                    "NOT_FOUND",
+                    "Application tidak ditemukan"
+                );
+            }
+
+            return existingApplication;
+        }
+
+        let affectedUserIds: string[] = [];
+        let revokedTokenCount = 0;
+
+        if (application.status === "inactive") {
+            const revocation = await revokeApplicationAccess(
+                {
+                    applicationId: application.id
+                },
+                tx
+            );
+
+            affectedUserIds = revocation.affectedUserIds;
+            revokedTokenCount = revocation.revokedTokenCount;
+
+            await writeApplicationOutboxEvents(
+                affectedUserIds.map((userId) => ({
+                    eventType: "AccessPolicyChanged",
+                    userId,
+                    centralSessionId: null,
+                    applicationId: application.id,
+                    reason: "application_inactive",
+                    metadata: {
+                        status: "inactive"
+                    }
+                })),
+                tx
             );
         }
 
         await writeAudit(
             {
-                eventType:
-                    "application_changed",
+                eventType: "application_changed",
                 actorId: null,
-                applicationId:
-                    application.id,
+                applicationId: application.id,
                 result: "success",
                 metadata: {
                     action: "status_changed",
-                    status: application.status
+                    status: application.status,
+                    affectedUserIds,
+                    revokedTokenCount
                 },
-                ipAddress:
-                    context.ipAddress ?? null
+                ipAddress: context.ipAddress ?? null
             },
             tx
         );

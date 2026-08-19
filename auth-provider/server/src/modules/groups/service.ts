@@ -1,7 +1,12 @@
-import { and, eq } from "drizzle-orm";
+import {
+    and,
+    eq,
+    inArray
+} from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import {
+    applicationGroupPolicies,
     groups,
     userGroups,
     users
@@ -14,6 +19,13 @@ import type {
     CreateGroupInput,
     UpdateGroupInput
 } from "./schemas.js";
+
+import {
+    writeApplicationOutboxEvents
+} from "../events/service.js";
+import {
+    revokeUserApplicationsAccess
+} from "../revocation/service.js";
 
 const groupColumns = {
     id: groups.id,
@@ -357,8 +369,10 @@ export async function removeUserFromGroup(
             )
             .returning({
                 id: userGroups.id,
-                userId: userGroups.userId,
-                groupId: userGroups.groupId
+                userId:
+                    userGroups.userId,
+                groupId:
+                    userGroups.groupId
             });
 
         if (!membership) {
@@ -369,15 +383,149 @@ export async function removeUserFromGroup(
             );
         }
 
+        const candidateApplications =
+            await tx
+                .select({
+                    applicationId:
+                        applicationGroupPolicies
+                            .applicationId
+                })
+                .from(
+                    applicationGroupPolicies
+                )
+                .where(
+                    and(
+                        eq(
+                            applicationGroupPolicies
+                                .groupId,
+                            groupId
+                        ),
+                        eq(
+                            applicationGroupPolicies
+                                .effect,
+                            "allow"
+                        )
+                    )
+                )
+                .groupBy(
+                    applicationGroupPolicies
+                        .applicationId
+                );
+
+        const candidateApplicationIds =
+            candidateApplications.map(
+                ({ applicationId }) =>
+                    applicationId
+            );
+
+        let lostApplicationIds:
+            string[] = [];
+
+        if (
+            candidateApplicationIds.length >
+            0
+        ) {
+            const remainingApplications =
+                await tx
+                    .select({
+                        applicationId:
+                            applicationGroupPolicies
+                                .applicationId
+                    })
+                    .from(userGroups)
+                    .innerJoin(
+                        applicationGroupPolicies,
+                        eq(
+                            applicationGroupPolicies
+                                .groupId,
+                            userGroups.groupId
+                        )
+                    )
+                    .where(
+                        and(
+                            eq(
+                                userGroups.userId,
+                                userId
+                            ),
+                            eq(
+                                applicationGroupPolicies
+                                    .effect,
+                                "allow"
+                            ),
+                            inArray(
+                                applicationGroupPolicies
+                                    .applicationId,
+                                candidateApplicationIds
+                            )
+                        )
+                    )
+                    .groupBy(
+                        applicationGroupPolicies
+                            .applicationId
+                    );
+
+            const remainingApplicationIds =
+                new Set(
+                    remainingApplications.map(
+                        ({
+                            applicationId
+                        }) =>
+                            applicationId
+                    )
+                );
+
+            lostApplicationIds =
+                candidateApplicationIds.filter(
+                    (applicationId) =>
+                        !remainingApplicationIds
+                            .has(
+                                applicationId
+                            )
+                );
+        }
+
+        const revocation =
+            await revokeUserApplicationsAccess(
+                {
+                    userId,
+                    applicationIds:
+                        lostApplicationIds
+                },
+                tx
+            );
+
+        await writeApplicationOutboxEvents(
+            lostApplicationIds.map(
+                (applicationId) => ({
+                    eventType:
+                        "AccessPolicyChanged",
+                    userId,
+                    centralSessionId: null,
+                    applicationId,
+                    reason:
+                        "membership_removed",
+                    metadata: {
+                        groupId
+                    }
+                })
+            ),
+            tx
+        );
+
         await writeAudit(
             {
-                eventType: "membership_changed",
+                eventType:
+                    "membership_changed",
                 actorId: null,
                 userId,
                 result: "success",
                 metadata: {
                     action: "removed",
-                    groupId
+                    groupId,
+                    lostApplicationIds,
+                    revokedTokenCount:
+                        revocation
+                            .revokedTokenCount
                 },
                 ipAddress:
                     context.ipAddress ?? null

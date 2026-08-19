@@ -7,7 +7,7 @@ import {
     loginBodySchema,
     loginQuerySchema
 } from "./schemas.js";
-import { login } from "./service.js";
+import { login, logoutSso } from "./service.js";
 import { validateCentralSession } from "../sessions/service.js";
 
 export async function authRoutes(app: FastifyInstance) {
@@ -113,6 +113,26 @@ export async function authRoutes(app: FastifyInstance) {
                 status: result.session.status,
                 expiresAt: result.session.expiresAt
             }
+        };
+    });
+
+    app.post("/logout/sso", async (request, reply) => {
+        const rawToken =
+            request.cookies[env.SSO_COOKIE_NAME];
+
+        await logoutSso(rawToken, {
+            ipAddress: request.ip
+        });
+
+        reply.clearCookie(
+            env.SSO_COOKIE_NAME,
+            {
+                path: "/"
+            }
+        );
+
+        return {
+            success: true
         };
     });
 

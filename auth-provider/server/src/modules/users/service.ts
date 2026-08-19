@@ -1,4 +1,8 @@
-import { eq } from "drizzle-orm";
+import {
+    and,
+    eq,
+    ne
+} from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import { users } from "../../db/schema/index.js";
@@ -6,6 +10,12 @@ import { AppError } from "../../http/errors.js";
 import { hashPassword } from "../../security/password.js";
 
 import { writeAudit } from "../audit/service.js";
+import {
+    writeGlobalOutboxEvent
+} from "../events/service.js";
+import {
+    revokeAllUserSessions
+} from "../revocation/service.js";
 
 import type {
     CreateUserInput,
@@ -35,24 +45,32 @@ type PostgresErrorLike = {
 function getPostgresError(
     error: unknown
 ): PostgresErrorLike | null {
-    if (typeof error !== "object" || error === null) {
+    if (
+        typeof error !== "object" ||
+        error === null
+    ) {
         return null;
     }
 
-    const current = error as PostgresErrorLike;
+    const current =
+        error as PostgresErrorLike;
 
     if (current.code !== undefined) {
         return current;
     }
 
     if ("cause" in error) {
-        return getPostgresError(error.cause);
+        return getPostgresError(
+            error.cause
+        );
     }
 
     return null;
 }
 
-function isUserEmailConflict(error: unknown) {
+function isUserEmailConflict(
+    error: unknown
+) {
     const databaseError = getPostgresError(error);
 
     return (
@@ -67,7 +85,9 @@ export async function listUsers() {
         .from(users);
 }
 
-export async function getUserById(userId: string) {
+export async function getUserById(
+    userId: string
+) {
     const [user] = await db
         .select(safeUserColumns)
         .from(users)
@@ -94,39 +114,51 @@ export async function createUser(
         .toLowerCase();
 
     const passwordHash =
-        await hashPassword(input.password);
+        await hashPassword(
+            input.password
+        );
 
     try {
-        return await db.transaction(async (tx) => {
-            const [user] = await tx
-                .insert(users)
-                .values({
-                    name: input.name.trim(),
-                    email,
-                    passwordHash,
-                    status: "active"
-                })
-                .returning(safeUserColumns);
+        return await db.transaction(
+            async (tx) => {
+                const [user] = await tx
+                    .insert(users)
+                    .values({
+                        name:
+                            input.name.trim(),
+                        email,
+                        passwordHash,
+                        status: "active"
+                    })
+                    .returning(
+                        safeUserColumns
+                    );
 
-            await writeAudit(
-                {
-                    eventType: "user_created",
-                    actorId: null,
-                    userId: user.id,
-                    result: "success",
-                    metadata: {
-                        status: user.status
+                await writeAudit(
+                    {
+                        eventType:
+                            "user_created",
+                        actorId: null,
+                        userId: user.id,
+                        result: "success",
+                        metadata: {
+                            status:
+                                user.status
+                        },
+                        ipAddress:
+                            context.ipAddress ??
+                            null
                     },
-                    ipAddress:
-                        context.ipAddress ?? null
-                },
-                tx
-            );
+                    tx
+                );
 
-            return user;
-        });
+                return user;
+            }
+        );
     } catch (error) {
-        if (isUserEmailConflict(error)) {
+        if (
+            isUserEmailConflict(error)
+        ) {
             throw new AppError(
                 409,
                 "CONFLICT",
@@ -152,13 +184,15 @@ export async function updateUser(
     };
 
     if (input.name !== undefined) {
-        updateData.name = input.name.trim();
+        updateData.name =
+            input.name.trim();
     }
 
     if (input.email !== undefined) {
-        updateData.email = input.email
-            .trim()
-            .toLowerCase();
+        updateData.email =
+            input.email
+                .trim()
+                .toLowerCase();
     }
 
     const changedFields: string[] = [];
@@ -172,40 +206,53 @@ export async function updateUser(
     }
 
     try {
-        return await db.transaction(async (tx) => {
-            const [user] = await tx
-                .update(users)
-                .set(updateData)
-                .where(eq(users.id, userId))
-                .returning(safeUserColumns);
+        return await db.transaction(
+            async (tx) => {
+                const [user] = await tx
+                    .update(users)
+                    .set(updateData)
+                    .where(
+                        eq(
+                            users.id,
+                            userId
+                        )
+                    )
+                    .returning(
+                        safeUserColumns
+                    );
 
-            if (!user) {
-                throw new AppError(
-                    404,
-                    "NOT_FOUND",
-                    "User tidak ditemukan"
-                );
-            }
+                if (!user) {
+                    throw new AppError(
+                        404,
+                        "NOT_FOUND",
+                        "User tidak ditemukan"
+                    );
+                }
 
-            await writeAudit(
-                {
-                    eventType: "user_updated",
-                    actorId: null,
-                    userId: user.id,
-                    result: "success",
-                    metadata: {
-                        changedFields
+                await writeAudit(
+                    {
+                        eventType:
+                            "user_updated",
+                        actorId: null,
+                        userId: user.id,
+                        result: "success",
+                        metadata: {
+                            changedFields
+                        },
+                        ipAddress:
+                            context.ipAddress ??
+                            null
                     },
-                    ipAddress:
-                        context.ipAddress ?? null
-                },
-                tx
-            );
+                    tx
+                );
 
-            return user;
-        });
+                return user;
+            }
+        );
     } catch (error) {
-        if (isUserEmailConflict(error)) {
+        if (
+            isUserEmailConflict(error)
+        ) {
             throw new AppError(
                 409,
                 "CONFLICT",
@@ -223,39 +270,97 @@ export async function updateUserStatus(
     context: UserMutationContext
 ) {
     return db.transaction(async (tx) => {
-        const [user] = await tx
+        const [changedUser] = await tx
             .update(users)
             .set({
                 status: input.status,
                 updatedAt: new Date()
             })
-            .where(eq(users.id, userId))
+            .where(
+                and(
+                    eq(users.id, userId),
+                    ne(
+                        users.status,
+                        input.status
+                    )
+                )
+            )
             .returning(safeUserColumns);
 
-        if (!user) {
-            throw new AppError(
-                404,
-                "NOT_FOUND",
-                "User tidak ditemukan"
+        if (!changedUser) {
+            const [existingUser] =
+                await tx
+                    .select(
+                        safeUserColumns
+                    )
+                    .from(users)
+                    .where(
+                        eq(
+                            users.id,
+                            userId
+                        )
+                    )
+                    .limit(1);
+
+            if (!existingUser) {
+                throw new AppError(
+                    404,
+                    "NOT_FOUND",
+                    "User tidak ditemukan"
+                );
+            }
+
+            return existingUser;
+        }
+
+        if (
+            changedUser.status ===
+            "inactive"
+        ) {
+            await revokeAllUserSessions(
+                {
+                    userId:
+                        changedUser.id,
+                    reason:
+                        "user_inactive"
+                },
+                tx
+            );
+
+            await writeGlobalOutboxEvent(
+                {
+                    eventType:
+                        "SessionRevoked",
+                    userId:
+                        changedUser.id,
+                    centralSessionId: null,
+                    reason:
+                        "user_inactive"
+                },
+                tx
             );
         }
 
         await writeAudit(
             {
-                eventType: "user_status_changed",
+                eventType:
+                    "user_status_changed",
                 actorId: null,
-                userId: user.id,
+                userId:
+                    changedUser.id,
                 result: "success",
                 metadata: {
-                    status: user.status
+                    status:
+                        changedUser.status
                 },
                 ipAddress:
-                    context.ipAddress ?? null
+                    context.ipAddress ??
+                    null
             },
             tx
         );
 
-        return user;
+        return changedUser;
     });
 }
 
@@ -265,7 +370,9 @@ export async function updateUserPassword(
     context: UserMutationContext
 ) {
     const passwordHash =
-        await hashPassword(input.password);
+        await hashPassword(
+            input.password
+        );
 
     return db.transaction(async (tx) => {
         const [user] = await tx
@@ -274,8 +381,15 @@ export async function updateUserPassword(
                 passwordHash,
                 updatedAt: new Date()
             })
-            .where(eq(users.id, userId))
-            .returning(safeUserColumns);
+            .where(
+                eq(
+                    users.id,
+                    userId
+                )
+            )
+            .returning(
+                safeUserColumns
+            );
 
         if (!user) {
             throw new AppError(
@@ -285,14 +399,37 @@ export async function updateUserPassword(
             );
         }
 
+        await revokeAllUserSessions(
+            {
+                userId: user.id,
+                reason:
+                    "password_changed"
+            },
+            tx
+        );
+
+        await writeGlobalOutboxEvent(
+            {
+                eventType:
+                    "PasswordChanged",
+                userId: user.id,
+                centralSessionId: null,
+                reason:
+                    "password_changed"
+            },
+            tx
+        );
+
         await writeAudit(
             {
-                eventType: "password_changed",
+                eventType:
+                    "password_changed",
                 actorId: null,
                 userId: user.id,
                 result: "success",
                 ipAddress:
-                    context.ipAddress ?? null
+                    context.ipAddress ??
+                    null
             },
             tx
         );

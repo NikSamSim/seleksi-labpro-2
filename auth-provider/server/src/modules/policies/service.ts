@@ -1,14 +1,25 @@
-import { and, eq } from "drizzle-orm";
+import {
+    and,
+    eq,
+    inArray
+} from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import {
     applicationGroupPolicies,
     applications,
-    groups
+    groups,
+    userGroups
 } from "../../db/schema/index.js";
 import { AppError } from "../../http/errors.js";
 
 import { writeAudit } from "../audit/service.js";
+import {
+    writeApplicationOutboxEvents
+} from "../events/service.js";
+import {
+    revokeUsersApplicationAccess
+} from "../revocation/service.js";
 
 import type {
     CreateApplicationPolicyInput
@@ -38,25 +49,34 @@ type PostgresErrorLike = {
 function getPostgresError(
     error: unknown
 ): PostgresErrorLike | null {
-    if (typeof error !== "object" || error === null) {
+    if (
+        typeof error !== "object" ||
+        error === null
+    ) {
         return null;
     }
 
-    const current = error as PostgresErrorLike;
+    const current =
+        error as PostgresErrorLike;
 
     if (current.code !== undefined) {
         return current;
     }
 
     if ("cause" in error) {
-        return getPostgresError(error.cause);
+        return getPostgresError(
+            error.cause
+        );
     }
 
     return null;
 }
 
-function isPolicyConflict(error: unknown) {
-    const databaseError = getPostgresError(error);
+function isPolicyConflict(
+    error: unknown
+) {
+    const databaseError =
+        getPostgresError(error);
 
     return (
         databaseError?.code === "23505" &&
@@ -68,7 +88,8 @@ function isPolicyConflict(error: unknown) {
 function isMissingPolicyApplication(
     error: unknown
 ) {
-    const databaseError = getPostgresError(error);
+    const databaseError =
+        getPostgresError(error);
 
     return (
         databaseError?.code === "23503" &&
@@ -80,7 +101,8 @@ function isMissingPolicyApplication(
 function isMissingPolicyGroup(
     error: unknown
 ) {
-    const databaseError = getPostgresError(error);
+    const databaseError =
+        getPostgresError(error);
 
     return (
         databaseError?.code === "23503" &&
@@ -94,7 +116,8 @@ export async function listApplicationPolicies(
 ) {
     const rows = await db
         .select({
-            applicationId: applications.id,
+            applicationId:
+                applications.id,
 
             policyId:
                 applicationGroupPolicies.id,
@@ -115,7 +138,8 @@ export async function listApplicationPolicies(
         .leftJoin(
             applicationGroupPolicies,
             eq(
-                applicationGroupPolicies.applicationId,
+                applicationGroupPolicies
+                    .applicationId,
                 applications.id
             )
         )
@@ -123,7 +147,8 @@ export async function listApplicationPolicies(
             groups,
             eq(
                 groups.id,
-                applicationGroupPolicies.groupId
+                applicationGroupPolicies
+                    .groupId
             )
         )
         .where(
@@ -152,17 +177,19 @@ export async function listApplicationPolicies(
             return [];
         }
 
-        return [
-            {
-                id: row.policyId,
-                applicationId:
-                    row.applicationId,
-                groupId: row.groupId,
-                groupName: row.groupName,
-                effect: row.effect,
-                createdAt: row.createdAt
-            }
-        ];
+        return [{
+            id: row.policyId,
+            applicationId:
+                row.applicationId,
+            groupId:
+                row.groupId,
+            groupName:
+                row.groupName,
+            effect:
+                row.effect,
+            createdAt:
+                row.createdAt
+        }];
     });
 }
 
@@ -180,10 +207,14 @@ export async function createApplicationPolicy(
                     )
                     .values({
                         applicationId,
-                        groupId: input.groupId,
-                        effect: input.effect
+                        groupId:
+                            input.groupId,
+                        effect:
+                            input.effect
                     })
-                    .returning(policyColumns);
+                    .returning(
+                        policyColumns
+                    );
 
                 await writeAudit(
                     {
@@ -193,8 +224,10 @@ export async function createApplicationPolicy(
                         applicationId,
                         result: "success",
                         metadata: {
-                            action: "created",
-                            policyId: policy.id,
+                            action:
+                                "created",
+                            policyId:
+                                policy.id,
                             groupId:
                                 policy.groupId,
                             effect:
@@ -231,7 +264,9 @@ export async function createApplicationPolicy(
             );
         }
 
-        if (isMissingPolicyGroup(error)) {
+        if (
+            isMissingPolicyGroup(error)
+        ) {
             throw new AppError(
                 404,
                 "NOT_FOUND",
@@ -250,15 +285,19 @@ export async function removeApplicationPolicy(
 ) {
     return db.transaction(async (tx) => {
         const [policy] = await tx
-            .delete(applicationGroupPolicies)
+            .delete(
+                applicationGroupPolicies
+            )
             .where(
                 and(
                     eq(
-                        applicationGroupPolicies.id,
+                        applicationGroupPolicies
+                            .id,
                         policyId
                     ),
                     eq(
-                        applicationGroupPolicies.applicationId,
+                        applicationGroupPolicies
+                            .applicationId,
                         applicationId
                     )
                 )
@@ -273,9 +312,142 @@ export async function removeApplicationPolicy(
             );
         }
 
+        let affectedUserIds:
+            string[] = [];
+
+        /*
+         * Hanya penghapusan ALLOW policy
+         * yang dapat menghilangkan access.
+         */
+        if (policy.effect === "allow") {
+            const candidateUsers =
+                await tx
+                    .select({
+                        userId:
+                            userGroups.userId
+                    })
+                    .from(userGroups)
+                    .where(
+                        eq(
+                            userGroups.groupId,
+                            policy.groupId
+                        )
+                    )
+                    .groupBy(
+                        userGroups.userId
+                    );
+
+            const candidateUserIds =
+                candidateUsers.map(
+                    ({ userId }) =>
+                        userId
+                );
+
+            if (
+                candidateUserIds.length >
+                0
+            ) {
+                /*
+                 * Policy yang dihapus sudah tidak
+                 * terlihat di transaction ini.
+                 *
+                 * Cari candidate user yang masih
+                 * mempunyai ALLOW path lain ke
+                 * application yang sama.
+                 */
+                const remainingUsers =
+                    await tx
+                        .select({
+                            userId:
+                                userGroups
+                                    .userId
+                        })
+                        .from(userGroups)
+                        .innerJoin(
+                            applicationGroupPolicies,
+                            eq(
+                                applicationGroupPolicies
+                                    .groupId,
+                                userGroups
+                                    .groupId
+                            )
+                        )
+                        .where(
+                            and(
+                                inArray(
+                                    userGroups
+                                        .userId,
+                                    candidateUserIds
+                                ),
+                                eq(
+                                    applicationGroupPolicies
+                                        .applicationId,
+                                    applicationId
+                                ),
+                                eq(
+                                    applicationGroupPolicies
+                                        .effect,
+                                    "allow"
+                                )
+                            )
+                        )
+                        .groupBy(
+                            userGroups.userId
+                        );
+
+                const remainingUserIds =
+                    new Set(
+                        remainingUsers.map(
+                            ({ userId }) =>
+                                userId
+                        )
+                    );
+
+                affectedUserIds =
+                    candidateUserIds.filter(
+                        (userId) =>
+                            !remainingUserIds
+                                .has(userId)
+                    );
+            }
+        }
+
+        const revocation =
+            await revokeUsersApplicationAccess(
+                {
+                    userIds:
+                        affectedUserIds,
+                    applicationId
+                },
+                tx
+            );
+
+        await writeApplicationOutboxEvents(
+            affectedUserIds.map(
+                (userId) => ({
+                    eventType:
+                        "AccessPolicyChanged",
+                    userId,
+                    centralSessionId:
+                        null,
+                    applicationId,
+                    reason:
+                        "policy_removed",
+                    metadata: {
+                        policyId:
+                            policy.id,
+                        groupId:
+                            policy.groupId
+                    }
+                })
+            ),
+            tx
+        );
+
         await writeAudit(
             {
-                eventType: "policy_changed",
+                eventType:
+                    "policy_changed",
                 actorId: null,
                 applicationId,
                 result: "success",
@@ -283,10 +455,15 @@ export async function removeApplicationPolicy(
                     action: "removed",
                     policyId: policy.id,
                     groupId: policy.groupId,
-                    effect: policy.effect
+                    effect: policy.effect,
+                    affectedUserIds,
+                    revokedTokenCount:
+                        revocation
+                            .revokedTokenCount
                 },
                 ipAddress:
-                    context.ipAddress ?? null
+                    context.ipAddress ??
+                    null
             },
             tx
         );

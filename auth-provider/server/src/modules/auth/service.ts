@@ -3,7 +3,10 @@ import { eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { users } from "../../db/schema/index.js";
 import { AppError } from "../../http/errors.js";
-import { hashPassword, verifyPassword } from "../../security/password.js";
+import {
+    hashPassword,
+    verifyPassword
+} from "../../security/password.js";
 import {
     writeAudit,
     writeAuditBestEffort
@@ -11,7 +14,16 @@ import {
 import type {
     AuditLogger
 } from "../audit/service.js";
-import { createCentralSession } from "../sessions/service.js";
+import {
+    writeGlobalOutboxEvent
+} from "../events/service.js";
+import {
+    revokeCentralSession
+} from "../revocation/service.js";
+import {
+    createCentralSession,
+    getCentralSessionByRawToken
+} from "../sessions/service.js";
 
 import type { LoginInput } from "./schemas.js";
 
@@ -19,6 +31,10 @@ type LoginContext = {
     ipAddress?: string | null;
     userAgent?: string | null;
     logger: AuditLogger;
+};
+
+type LogoutSsoContext = {
+    ipAddress?: string | null;
 };
 
 const dummyPasswordHashPromise =
@@ -70,6 +86,7 @@ export async function login(
             },
             context.logger
         );
+
         throwInvalidCredentials();
     }
 
@@ -81,8 +98,10 @@ export async function login(
             await createCentralSession(
                 {
                     userId: user.id,
-                    ipAddress: context.ipAddress,
-                    userAgent: context.userAgent
+                    ipAddress:
+                        context.ipAddress,
+                    userAgent:
+                        context.userAgent
                 },
                 tx
             );
@@ -113,6 +132,82 @@ export async function login(
         session,
         rawToken
     };
+}
+
+export async function logoutSso(
+    rawToken: string | undefined,
+    context: LogoutSsoContext
+) {
+    if (!rawToken) {
+        return {
+            revoked: false
+        };
+    }
+
+    const session =
+        await getCentralSessionByRawToken(
+            rawToken
+        );
+
+    if (
+        !session ||
+        session.status !== "active" ||
+        session.revokedAt !== null
+    ) {
+        return {
+            revoked: false
+        };
+    }
+
+    return db.transaction(async (tx) => {
+        const revocation =
+            await revokeCentralSession(
+                {
+                    sessionId: session.id,
+                    reason: "sso_logout"
+                },
+                tx
+            );
+
+        if (
+            revocation.revokedSessionCount > 0
+        ) {
+            await writeGlobalOutboxEvent(
+                {
+                    eventType:
+                        "SessionRevoked",
+                    userId: session.userId,
+                    centralSessionId:
+                        session.id,
+                    reason: "sso_logout"
+                },
+                tx
+            );
+
+            await writeAudit(
+                {
+                    eventType: "logout",
+                    actorId: session.userId,
+                    userId: session.userId,
+                    sessionId: session.id,
+                    result: "success",
+                    metadata: {
+                        reason: "sso_logout"
+                    },
+                    ipAddress:
+                        context.ipAddress ??
+                        null
+                },
+                tx
+            );
+        }
+
+        return {
+            revoked:
+                revocation.revokedSessionCount >
+                0
+        };
+    });
 }
 
 function throwInvalidCredentials(): never {

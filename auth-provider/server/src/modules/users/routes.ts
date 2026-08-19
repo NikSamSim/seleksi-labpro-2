@@ -44,6 +44,7 @@ export async function userRoutes(app: FastifyInstance) {
         const user = await createUser(
             input,
             {
+                actorId: request.admin!.userId,
                 ipAddress: request.ip
             }
         );
@@ -67,6 +68,7 @@ export async function userRoutes(app: FastifyInstance) {
                 userId,
                 input,
                 {
+                    actorId: request.admin!.userId,
                     ipAddress: request.ip
                 }
             );
@@ -88,6 +90,7 @@ export async function userRoutes(app: FastifyInstance) {
                 userId,
                 input,
                 {
+                    actorId: request.admin!.userId,
                     ipAddress: request.ip
                 }
             );
@@ -109,6 +112,7 @@ export async function userRoutes(app: FastifyInstance) {
                 userId,
                 input,
                 {
+                    actorId: request.admin!.userId,
                     ipAddress: request.ip
                 }
             );

@@ -28,6 +28,10 @@ async function seedGroups() {
             {
                 name: "app-b-users",
                 description: "Users allowed to access App B"
+            },
+            {
+                name: "administrators",
+                description: "Users allowed to access the Auth Provider Control Panel"
             }
         ])
         .onConflictDoNothing({
@@ -60,6 +64,11 @@ const seedUserData = [
         name: "Inactive User",
         email: "inactive@example.com",
         status: "inactive"
+    },
+    {
+        name: "Administrator",
+        email: "admin@example.com",
+        status: "active"
     }
 ];
 
@@ -106,6 +115,7 @@ async function seedMemberships() {
     console.log("Seeding user memberships...");
 
     const membershipUserEmails = [
+        "admin@example.com",
         "app-a-only@example.com",
         "app-b-only@example.com",
         "both-apps@example.com"
@@ -113,7 +123,8 @@ async function seedMemberships() {
 
     const membershipGroupNames = [
         "app-a-users",
-        "app-b-users"
+        "app-b-users",
+        "administrators"
     ];
 
     const membershipUsers = await db
@@ -155,14 +166,20 @@ async function seedMemberships() {
     const bothAppsUserId = userIdByEmail.get(
         "both-apps@example.com"
     );
+    const adminUserId = userIdByEmail.get(
+        "admin@example.com"
+    );
 
     const appAGroupId = groupIdByName.get("app-a-users");
     const appBGroupId = groupIdByName.get("app-b-users");
+    const adminGroupId = groupIdByName.get("administrators");
 
     if (
+        !adminUserId ||
         !appAOnlyUserId ||
         !appBOnlyUserId ||
         !bothAppsUserId ||
+        !adminGroupId ||
         !appAGroupId ||
         !appBGroupId
     ) {
@@ -174,6 +191,10 @@ async function seedMemberships() {
     await db
         .insert(userGroups)
         .values([
+            {
+                userId: adminUserId,
+                groupId: adminGroupId
+            },
             {
                 userId: appAOnlyUserId,
                 groupId: appAGroupId

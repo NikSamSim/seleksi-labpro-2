@@ -76,7 +76,9 @@ export async function apiRequest<T>(
         `${API_BASE_URL}${normalizedPath}`,
         {
             ...init,
-            headers
+            headers,
+            credentials:
+                init.credentials ?? "include"
         }
     );
 

@@ -9,13 +9,7 @@ import { AppError, createErrorResponse } from "./http/errors.js";
 import { env } from "./config/env.js";
 import { checkDatabase } from "./db/client.js";
 import { checkRabbitMQ } from "./messaging/rabbitmq.js";
-import { userRoutes } from "./modules/users/routes.js";
-import {
-    groupRoutes,
-    membershipRoutes
-} from "./modules/groups/routes.js";
-import { applicationRoutes } from "./modules/applications/routes.js";
-import { policyRoutes } from "./modules/policies/routes.js";
+import { adminRoutes } from "./modules/admin/routes.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { oauthRoutes } from "./modules/oauth/routes.js";
 
@@ -141,6 +135,7 @@ export function buildApp() {
 
     app.register(cors, {
         origin: env.CONTROL_PANEL_ORIGIN,
+        credentials: true,
         methods: [
             "GET",
             "HEAD",
@@ -157,24 +152,8 @@ export function buildApp() {
     app.register(authRoutes);
     app.register(oauthRoutes);
 
-    app.register(userRoutes, {
-        prefix: "/admin/users"
-    });
-
-    app.register(groupRoutes, {
-        prefix: "/admin/groups"
-    });
-
-    app.register(membershipRoutes, {
-        prefix: "/admin/users"
-    });
-
-    app.register(applicationRoutes, {
-        prefix: "/admin/applications"
-    });
-
-    app.register(policyRoutes, {
-        prefix: "/admin/applications"
+    app.register(adminRoutes, {
+        prefix: "/admin"
     });
 
     app.get("/health/live", async () => {

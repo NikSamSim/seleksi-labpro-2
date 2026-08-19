@@ -34,6 +34,7 @@ const safeUserColumns = {
 };
 
 type UserMutationContext = {
+    actorId: string;
     ipAddress?: string | null;
 };
 
@@ -138,7 +139,7 @@ export async function createUser(
                     {
                         eventType:
                             "user_created",
-                        actorId: null,
+                        actorId: context.actorId,
                         userId: user.id,
                         result: "success",
                         metadata: {
@@ -233,7 +234,7 @@ export async function updateUser(
                     {
                         eventType:
                             "user_updated",
-                        actorId: null,
+                        actorId: context.actorId,
                         userId: user.id,
                         result: "success",
                         metadata: {
@@ -345,7 +346,7 @@ export async function updateUserStatus(
             {
                 eventType:
                     "user_status_changed",
-                actorId: null,
+                actorId: context.actorId,
                 userId:
                     changedUser.id,
                 result: "success",
@@ -424,7 +425,7 @@ export async function updateUserPassword(
             {
                 eventType:
                     "password_changed",
-                actorId: null,
+                actorId: context.actorId,
                 userId: user.id,
                 result: "success",
                 ipAddress:

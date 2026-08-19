@@ -45,6 +45,7 @@ const redirectUriColumns = {
 };
 
 type ApplicationMutationContext = {
+    actorId: string;
     ipAddress?: string | null;
 };
 
@@ -167,7 +168,7 @@ export async function createApplication(
                     {
                         eventType:
                             "application_changed",
-                        actorId: null,
+                        actorId: context.actorId,
                         applicationId:
                             createdApplication.id,
                         result: "success",
@@ -290,7 +291,7 @@ export async function updateApplication(
                     {
                         eventType:
                             "application_changed",
-                        actorId: null,
+                        actorId: context.actorId,
                         applicationId:
                             application.id,
                         result: "success",
@@ -390,7 +391,7 @@ export async function updateApplicationStatus(
         await writeAudit(
             {
                 eventType: "application_changed",
-                actorId: null,
+                actorId: context.actorId,
                 applicationId: application.id,
                 result: "success",
                 metadata: {
@@ -486,7 +487,7 @@ export async function addApplicationRedirectUri(
                     {
                         eventType:
                             "application_changed",
-                        actorId: null,
+                        actorId: context.actorId,
                         applicationId,
                         result: "success",
                         metadata: {
@@ -563,7 +564,7 @@ export async function removeApplicationRedirectUri(
             {
                 eventType:
                     "application_changed",
-                actorId: null,
+                actorId: context.actorId,
                 applicationId,
                 result: "success",
                 metadata: {

@@ -36,6 +36,7 @@ const groupColumns = {
 };
 
 type GroupMutationContext = {
+    actorId: string;
     ipAddress?: string | null;
 };
 
@@ -130,7 +131,7 @@ export async function createGroup(
             await writeAudit(
                 {
                     eventType: "group_changed",
-                    actorId: null,
+                    actorId: context.actorId,
                     result: "success",
                     metadata: {
                         action: "created",
@@ -208,7 +209,7 @@ export async function updateGroup(
             await writeAudit(
                 {
                     eventType: "group_changed",
-                    actorId: null,
+                    actorId: context.actorId,
                     result: "success",
                     metadata: {
                         action: "updated",
@@ -303,7 +304,7 @@ export async function addUserToGroup(
                 {
                     eventType:
                         "membership_changed",
-                    actorId: null,
+                    actorId: context.actorId,
                     userId,
                     result: "success",
                     metadata: {
@@ -516,7 +517,7 @@ export async function removeUserFromGroup(
             {
                 eventType:
                     "membership_changed",
-                actorId: null,
+                actorId: context.actorId,
                 userId,
                 result: "success",
                 metadata: {

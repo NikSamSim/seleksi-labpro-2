@@ -58,6 +58,7 @@ export async function applicationRoutes(
             await createApplication(
                 input,
                 {
+                    actorId: request.admin!.userId,
                     ipAddress: request.ip
                 }
             );
@@ -85,6 +86,7 @@ export async function applicationRoutes(
                     applicationId,
                     input,
                     {
+                        actorId: request.admin!.userId,
                         ipAddress: request.ip
                     }
                 );
@@ -113,6 +115,7 @@ export async function applicationRoutes(
                     applicationId,
                     input,
                     {
+                        actorId: request.admin!.userId,
                         ipAddress: request.ip
                     }
                 );
@@ -160,6 +163,7 @@ export async function applicationRoutes(
                     applicationId,
                     input,
                     {
+                        actorId: request.admin!.userId,
                         ipAddress: request.ip
                     }
                 );
@@ -188,6 +192,7 @@ export async function applicationRoutes(
                     applicationId,
                     redirectUriId,
                     {
+                        actorId: request.admin!.userId,
                         ipAddress: request.ip
                     }
                 );

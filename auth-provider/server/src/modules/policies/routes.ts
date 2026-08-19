@@ -52,6 +52,7 @@ export async function policyRoutes(
                     applicationId,
                     input,
                     {
+                        actorId: request.admin!.userId,
                         ipAddress: request.ip
                     }
                 );
@@ -80,6 +81,7 @@ export async function policyRoutes(
                     applicationId,
                     policyId,
                     {
+                        actorId: request.admin!.userId,
                         ipAddress: request.ip
                     }
                 );

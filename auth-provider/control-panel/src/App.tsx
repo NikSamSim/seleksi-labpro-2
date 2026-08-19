@@ -6,6 +6,14 @@ import {
 } from "react";
 
 import {
+    getAdminSession,
+    loginAdmin,
+    logoutAdmin,
+    type AdminSession
+} from "./api/admin";
+import { ApiError } from "./api/client";
+
+import {
     createUser,
     listUsers,
     updateUser,
@@ -74,6 +82,45 @@ const initialCreateApplicationInput: CreateApplicationInput = {
 };
 
 function App() {
+    const [
+        authState,
+        setAuthState
+    ] = useState<
+        | "checking"
+        | "signed-out"
+        | "forbidden"
+        | "authenticated"
+        | "error"
+    >("checking");
+
+    const [
+        adminSession,
+        setAdminSession
+    ] = useState<AdminSession | null>(null);
+
+    const [
+        loginInput,
+        setLoginInput
+    ] = useState({
+        email: "",
+        password: ""
+    });
+
+    const [
+        loginSubmitting,
+        setLoginSubmitting
+    ] = useState(false);
+
+    const [
+        loginError,
+        setLoginError
+    ] = useState<string | null>(null);
+
+    const [
+        authError,
+        setAuthError
+    ] = useState<string | null>(null);
+
     const [users, setUsers] =
         useState<User[]>([]);
 
@@ -307,6 +354,61 @@ function App() {
         useState<string | null>(null);
 
     useEffect(() => {
+        let cancelled = false;
+
+        async function checkAdminSession() {
+            try {
+                const session =
+                    await getAdminSession();
+
+                if (cancelled) {
+                    return;
+                }
+
+                setAdminSession(session);
+                setAuthState("authenticated");
+            } catch (error) {
+                if (cancelled) {
+                    return;
+                }
+
+                if (
+                    error instanceof ApiError &&
+                    error.status === 401
+                ) {
+                    setAuthState("signed-out");
+                    return;
+                }
+
+                if (
+                    error instanceof ApiError &&
+                    error.status === 403
+                ) {
+                    setAuthState("forbidden");
+                    return;
+                }
+
+                setAuthError(
+                    error instanceof Error
+                        ? error.message
+                        : "Gagal memeriksa session"
+                );
+                setAuthState("error");
+            }
+        }
+
+        void checkAdminSession();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (authState !== "authenticated") {
+            return;
+        }
+
         async function loadUsers() {
             try {
                 const data = await listUsers();
@@ -324,9 +426,13 @@ function App() {
         }
 
         void loadUsers();
-    }, []);
+    }, [authState]);
 
     useEffect(() => {
+        if (authState !== "authenticated") {
+            return;
+        }
+
         async function loadGroups() {
             try {
                 const data = await listGroups();
@@ -344,9 +450,13 @@ function App() {
         }
 
         void loadGroups();
-    }, []);
+    }, [authState]);
 
     useEffect(() => {
+        if (authState !== "authenticated") {
+            return;
+        }
+
         async function loadApplications() {
             try {
                 const data =
@@ -365,7 +475,79 @@ function App() {
         }
 
         void loadApplications();
-    }, []);
+    }, [authState]);
+
+    async function handleAdminLogin(
+        event: FormEvent<HTMLFormElement>
+    ) {
+        event.preventDefault();
+
+        setLoginSubmitting(true);
+        setLoginError(null);
+
+        try {
+            const session =
+                await loginAdmin(loginInput);
+
+            setAdminSession(session);
+
+            setLoginInput((current) => ({
+                ...current,
+                password: ""
+            }));
+
+            setLoading(true);
+            setGroupsListLoading(true);
+            setApplicationsLoading(true);
+
+            setAuthState("authenticated");
+        } catch (error) {
+            if (
+                error instanceof ApiError &&
+                error.status === 403
+            ) {
+                setLoginError(
+                    "User berhasil login, tetapi tidak memiliki akses administrator."
+                );
+                setAuthState("forbidden");
+                return;
+            }
+
+            setLoginError(
+                error instanceof Error
+                    ? error.message
+                    : "Login gagal"
+            );
+        } finally {
+            setLoginSubmitting(false);
+        }
+    }
+
+    async function handleAdminLogout() {
+        setAuthError(null);
+
+        try {
+            await logoutAdmin();
+        } catch (error) {
+            setAuthError(
+                error instanceof Error
+                    ? error.message
+                    : "Logout gagal"
+            );
+
+            return;
+        }
+
+        setAdminSession(null);
+        setUsers([]);
+        setGroups([]);
+        setApplications([]);
+        setLoginInput({
+            email: "",
+            password: ""
+        });
+        setAuthState("signed-out");
+    }
 
     async function handleCreateUser(
         event: FormEvent<HTMLFormElement>
@@ -1155,6 +1337,123 @@ function App() {
         }
     }
 
+    if (authState === "checking") {
+        return (
+            <main className="control-panel">
+                <h1>Labpro Auth Provider</h1>
+                <h2>Control Panel</h2>
+                <p>Memeriksa authentication...</p>
+            </main>
+        );
+    }
+
+    if (authState === "signed-out") {
+        return (
+            <main className="control-panel">
+                <h1>Labpro Auth Provider</h1>
+                <h2>Control Panel</h2>
+
+                <h3>Administrator Login</h3>
+
+                <form onSubmit={handleAdminLogin}>
+                    <div>
+                        <label htmlFor="admin-email">
+                            Email
+                        </label>
+
+                        <input
+                            id="admin-email"
+                            type="email"
+                            value={loginInput.email}
+                            onChange={(event) =>
+                                setLoginInput({
+                                    ...loginInput,
+                                    email:
+                                        event.target.value
+                                })
+                            }
+                            required
+                        />
+                    </div>
+
+                    <div>
+                        <label htmlFor="admin-password">
+                            Password
+                        </label>
+
+                        <input
+                            id="admin-password"
+                            type="password"
+                            value={loginInput.password}
+                            onChange={(event) =>
+                                setLoginInput({
+                                    ...loginInput,
+                                    password:
+                                        event.target.value
+                                })
+                            }
+                            required
+                        />
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={loginSubmitting}
+                    >
+                        {loginSubmitting
+                            ? "Signing in..."
+                            : "Sign In"}
+                    </button>
+
+                    {loginError && (
+                        <p>
+                            Login gagal: {loginError}
+                        </p>
+                    )}
+                </form>
+            </main>
+        );
+    }
+
+    if (authState === "forbidden") {
+        return (
+            <main className="control-panel">
+                <h1>Labpro Auth Provider</h1>
+                <h2>Control Panel</h2>
+
+                <h3>Access Denied</h3>
+
+                <p>
+                    User yang sedang login bukan
+                    anggota group administrators.
+                </p>
+
+                <button
+                    type="button"
+                    onClick={() =>
+                        void handleAdminLogout()
+                    }
+                >
+                    Logout
+                </button>
+            </main>
+        );
+    }
+
+    if (authState === "error") {
+        return (
+            <main className="control-panel">
+                <h1>Labpro Auth Provider</h1>
+                <h2>Control Panel</h2>
+
+                <p>
+                    Gagal memeriksa authentication:{" "}
+                    {authError}
+                </p>
+            </main>
+        );
+    }
+
     const availableGroups =
         groups.filter(
             (group) =>
@@ -1177,6 +1476,27 @@ function App() {
         <main className="control-panel">
             <h1>Labpro Auth Provider</h1>
             <h2>Control Panel</h2>
+
+            {adminSession && (
+                <div>
+                    <p>
+                        Signed in as{" "}
+                        <strong>
+                            {adminSession.user.name}
+                        </strong>{" "}
+                        ({adminSession.user.email})
+                    </p>
+
+                    <button
+                        type="button"
+                        onClick={() =>
+                            void handleAdminLogout()
+                        }
+                    >
+                        Logout
+                    </button>
+                </div>
+            )}
 
             <section>
                 <h3>Create User</h3>

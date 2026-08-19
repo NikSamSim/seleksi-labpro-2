@@ -52,6 +52,7 @@ export async function groupRoutes(app: FastifyInstance) {
         const group = await createGroup(
             input,
             {
+                actorId: request.admin!.userId,
                 ipAddress: request.ip
             }
         );
@@ -75,6 +76,7 @@ export async function groupRoutes(app: FastifyInstance) {
                 groupId,
                 input,
                 {
+                    actorId: request.admin!.userId,
                     ipAddress: request.ip
                 }
             );
@@ -120,6 +122,7 @@ export async function membershipRoutes(
                     userId,
                     input.groupId,
                     {
+                        actorId: request.admin!.userId,
                         ipAddress: request.ip
                     }
                 );
@@ -148,6 +151,7 @@ export async function membershipRoutes(
                     userId,
                     groupId,
                     {
+                        actorId: request.admin!.userId,
                         ipAddress: request.ip
                     }
                 );

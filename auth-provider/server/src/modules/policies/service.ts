@@ -38,6 +38,7 @@ const policyColumns = {
 };
 
 type PolicyMutationContext = {
+    actorId: string;
     ipAddress?: string | null;
 };
 
@@ -220,7 +221,7 @@ export async function createApplicationPolicy(
                     {
                         eventType:
                             "policy_changed",
-                        actorId: null,
+                        actorId: context.actorId,
                         applicationId,
                         result: "success",
                         metadata: {
@@ -448,7 +449,7 @@ export async function removeApplicationPolicy(
             {
                 eventType:
                     "policy_changed",
-                actorId: null,
+                actorId: context.actorId,
                 applicationId,
                 result: "success",
                 metadata: {

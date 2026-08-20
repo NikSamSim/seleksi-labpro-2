@@ -3,9 +3,22 @@ import { env } from "./config/env.js";
 import { closeDatabase } from "./db/client.js";
 import { disconnectRabbitMQ } from "./messaging/rabbitmq.js";
 
-const app = buildApp();
-
 let shuttingDown = false;
+
+const app = buildApp(() => shuttingDown);
+
+function startShutdownDeadline() {
+    return setTimeout(() => {
+        app.log.error(
+            {
+                timeoutMs: env.SHUTDOWN_TIMEOUT_MS
+            },
+            "Auth server graceful shutdown timed out; forcing exit"
+        );
+
+        process.exit(1);
+    }, env.SHUTDOWN_TIMEOUT_MS);
+}
 
 try {
     app.log.info(
@@ -17,7 +30,7 @@ try {
         port: env.AUTH_SERVER_PORT,
         host: "0.0.0.0"
     });
-    
+
     app.log.info("Auth server started successfully");
 } catch (error) {
     app.log.error("Failed to start auth server");
@@ -29,7 +42,15 @@ async function shutdown(signal: "SIGTERM" | "SIGINT") {
 
     shuttingDown = true;
 
-    app.log.info({ signal }, "Shutting down auth server");
+    const shutdownDeadline = startShutdownDeadline();
+
+    app.log.info(
+        {
+            signal,
+            timeoutMs: env.SHUTDOWN_TIMEOUT_MS
+        },
+        "Shutting down auth server"
+    );
 
     try {
         await app.close();
@@ -42,6 +63,8 @@ async function shutdown(signal: "SIGTERM" | "SIGINT") {
         if (results.some((result) => result.status === "rejected")) {
             throw new Error("Failed to close one or more dependencies");
         }
+
+        clearTimeout(shutdownDeadline);
 
         app.log.info("Auth server shutdown complete");
     }

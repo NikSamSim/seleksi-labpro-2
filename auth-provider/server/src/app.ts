@@ -35,7 +35,9 @@ function isInvalidJsonBodyError(
     );
 }
 
-export function buildApp() {
+export function buildApp(
+    isShuttingDown: () => boolean = () => false
+) {
     const app = Fastify({
         logger: true
     });
@@ -165,6 +167,13 @@ export function buildApp() {
     });
 
     app.get("/health/ready", async (_request, reply) => {
+        if (isShuttingDown()) {
+            return reply.code(503).send({
+                status: "not_ready",
+                reason: "shutting_down"
+            });
+        }
+
         let database: "up" | "down" = "down";
         let messageBroker: "up" | "down" = "down";
 

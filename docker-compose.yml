@@ -71,9 +71,11 @@ services:
     build:
       context: .
       dockerfile: auth-provider/server/Dockerfile
+    stop_grace_period: 15s
     environment:
       NODE_ENV: ${NODE_ENV}
       AUTH_SERVER_PORT: ${AUTH_SERVER_PORT}
+      SHUTDOWN_TIMEOUT_MS: ${SHUTDOWN_TIMEOUT_MS:-10000}
 
       PRIMARY_DATABASE_URL: postgresql://${PRIMARY_DB_USER}:${PRIMARY_DB_PASSWORD}@primary-db:5432/${PRIMARY_DB_NAME}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
@@ -116,6 +118,7 @@ services:
     build:
       context: .
       dockerfile: auth-provider/sync-worker/Dockerfile
+    stop_grace_period: 15s
     environment:
       NODE_ENV: ${NODE_ENV}
       SYNC_WORKER_PORT: ${SYNC_WORKER_PORT}
@@ -146,6 +149,7 @@ services:
     build:
       context: .
       dockerfile: auth-provider/event-publisher/Dockerfile
+    stop_grace_period: 15s
     environment:
       NODE_ENV: ${NODE_ENV}
       EVENT_PUBLISHER_PORT: ${EVENT_PUBLISHER_PORT}

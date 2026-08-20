@@ -11,6 +11,7 @@ dotenv.config({
 const schema = z.object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     AUTH_SERVER_PORT: z.coerce.number().int().positive().default(3000),
+    SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
 
     PRIMARY_DATABASE_URL: z.string().min(1),
     RABBITMQ_URL: z.string().min(1),

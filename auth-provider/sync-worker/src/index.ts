@@ -11,6 +11,7 @@ import {
 } from "./db/client.js";
 
 import {
+    getInFlightDeliveryCount,
     startConsumerRecoveryLoop,
     stopConsumerRecoveryLoop
 } from "./worker/consumer.js";
@@ -18,6 +19,22 @@ import {
 let shuttingDown = false;
 
 const app = buildApp(() => shuttingDown);
+
+function startShutdownDeadline() {
+    return setTimeout(() => {
+        app.log.error(
+            {
+                timeoutMs:
+                    env.SHUTDOWN_TIMEOUT_MS,
+                inFlightDeliveries:
+                    getInFlightDeliveryCount()
+            },
+            "Sync worker graceful shutdown timed out; forcing exit"
+        );
+
+        process.exit(1);
+    }, env.SHUTDOWN_TIMEOUT_MS);
+}
 
 try {
     app.log.info(
@@ -74,7 +91,16 @@ async function shutdown(signal: "SIGTERM" | "SIGINT") {
 
     shuttingDown = true;
 
-    app.log.info({ signal }, "Shutting down sync worker");
+    const shutdownDeadline = startShutdownDeadline();
+
+    app.log.info(
+        {
+            signal,
+            timeoutMs:
+                env.SHUTDOWN_TIMEOUT_MS
+        },
+        "Shutting down sync worker"
+    );
 
     try {
         await stopConsumerRecoveryLoop();
@@ -96,7 +122,7 @@ async function shutdown(signal: "SIGTERM" | "SIGINT") {
                 process.exitCode = 1;
             }
         }
-
+        clearTimeout(shutdownDeadline);
         app.log.info("Sync worker shutdown complete");
     }
     catch (error) {

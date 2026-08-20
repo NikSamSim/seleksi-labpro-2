@@ -26,6 +26,8 @@ const schema = z.object({
     SYNC_WORKER_PREFETCH: z.coerce.number().int().positive(),
     SYNC_WORKER_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive(),
 
+    SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+
     APP_A_CLIENT_ID: z.string().min(1),
     APP_A_INTERNAL_LOGOUT_SECRET: z.string().min(32),
 

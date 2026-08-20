@@ -40,6 +40,13 @@ let consumerActive = false;
 let recoveryRunning = false;
 let recoveryPromise: Promise<void> | null = null;
 
+let activeConsumer: {
+    channel: Channel;
+    consumerTag: string;
+} | null = null;
+
+const inFlightDeliveries = new Set<Promise<void>>();
+
 function sleep(ms: number) {
     return new Promise<void>((resolve) => {
         setTimeout(resolve, ms);
@@ -48,6 +55,28 @@ function sleep(ms: number) {
 
 export function isConsumerActive() {
     return consumerActive;
+}
+
+export function getInFlightDeliveryCount() {
+    return inFlightDeliveries.size;
+}
+
+function trackInFlightDelivery(
+    task: Promise<void>
+) {
+    inFlightDeliveries.add(task);
+
+    void task.finally(() => {
+        inFlightDeliveries.delete(task);
+    });
+}
+
+async function waitForInFlightDeliveries() {
+    while (inFlightDeliveries.size > 0) {
+        await Promise.allSettled(
+            [...inFlightDeliveries]
+        );
+    }
 }
 
 async function deadLetterRawMessage(input: {
@@ -432,6 +461,11 @@ export async function startConsumer(
 
         lost = true;
         consumerActive = false;
+
+        if (activeConsumer?.channel === channel) {
+            activeConsumer = null;
+        }
+
         resolveLost();
     };
 
@@ -447,7 +481,7 @@ export async function startConsumer(
                         return;
                     }
 
-                    void processMessage(
+                    const task = processMessage(
                         channel,
                         rawMessage,
                         logger
@@ -475,6 +509,8 @@ export async function startConsumer(
                             // Recovery loop will create a new channel.
                         }
                     });
+
+                    trackInFlightDelivery(task);
                 },
                 {
                     noAck: false
@@ -486,6 +522,12 @@ export async function startConsumer(
                 "Consumer channel closed during startup"
             );
         }
+
+        activeConsumer = {
+            channel,
+            consumerTag:
+                result.consumerTag
+        };
 
         consumerActive = true;
 
@@ -569,9 +611,33 @@ export function startConsumerRecoveryLoop(
             });
 }
 
+async function cancelActiveConsumer() {
+    const currentConsumer =
+        activeConsumer;
+
+    activeConsumer = null;
+    consumerActive = false;
+
+    if (!currentConsumer) {
+        return;
+    }
+
+    try {
+        await currentConsumer.channel.cancel(
+            currentConsumer.consumerTag
+        );
+    } catch {
+        // Channel may already be closed.
+    }
+}
+
 export async function stopConsumerRecoveryLoop() {
     recoveryRunning = false;
     consumerActive = false;
+
+    await cancelActiveConsumer();
+
+    await waitForInFlightDeliveries();
 
     await closeConsumerChannel();
 

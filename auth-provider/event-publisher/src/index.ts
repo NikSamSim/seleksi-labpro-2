@@ -15,6 +15,20 @@ let shuttingDown = false;
 
 const app = buildApp(() => shuttingDown);
 
+function startShutdownDeadline() {
+    return setTimeout(() => {
+        app.log.error(
+            {
+                timeoutMs:
+                    env.SHUTDOWN_TIMEOUT_MS
+            },
+            "Event publisher graceful shutdown timed out; forcing exit"
+        );
+
+        process.exit(1);
+    }, env.SHUTDOWN_TIMEOUT_MS);
+}
+
 try {
     app.log.info(
         { port: env.EVENT_PUBLISHER_PORT },
@@ -62,7 +76,17 @@ async function shutdown(signal: "SIGTERM" | "SIGINT") {
 
     shuttingDown = true;
 
-    app.log.info({ signal }, "Shutting down event publisher");
+    const shutdownDeadline =
+        startShutdownDeadline();
+
+    app.log.info(
+        {
+            signal,
+            timeoutMs:
+                env.SHUTDOWN_TIMEOUT_MS
+        },
+        "Shutting down event publisher"
+    );
 
     try {
         await app.close();
@@ -77,6 +101,8 @@ async function shutdown(signal: "SIGTERM" | "SIGINT") {
         if (results.some((result) => result.status === "rejected")) {
             throw new Error("Failed to close one or more dependencies");
         }
+
+        clearTimeout(shutdownDeadline);
 
         app.log.info("Event publisher shutdown complete");
     }

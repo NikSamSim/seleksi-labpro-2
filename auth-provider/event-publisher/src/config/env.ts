@@ -24,7 +24,8 @@ const schema = z.object({
     SYNC_RETRY_DELAYS_MS: z.string().regex(retryDelaysPattern),
 
     EVENT_PUBLISHER_POLL_INTERVAL_MS: z.coerce.number().int().positive(),
-    EVENT_PUBLISHER_BATCH_SIZE: z.coerce.number().int().positive()
+    EVENT_PUBLISHER_BATCH_SIZE: z.coerce.number().int().positive(),
+    SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(10000)
 });
 
 export const env = schema.parse(process.env);

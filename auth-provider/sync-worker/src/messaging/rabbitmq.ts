@@ -2,6 +2,8 @@ import amqp, { type ChannelModel } from "amqplib";
 
 import { env } from "../config/env.js";
 
+import { assertSyncTopology } from "./topology.js";
+
 let connection: ChannelModel | null = null;
 
 export async function connectRabbitMQ() {
@@ -20,6 +22,17 @@ export async function connectRabbitMQ() {
     });
 
     return connection;
+}
+
+export async function setupRabbitMQTopology() {
+    const currentConnection = await connectRabbitMQ();
+    const channel = await currentConnection.createChannel();
+
+    try {
+        await assertSyncTopology(channel);
+    } finally {
+        await channel.close();
+    }
 }
 
 export async function checkRabbitMQ() {

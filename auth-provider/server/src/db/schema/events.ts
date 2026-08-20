@@ -1,9 +1,11 @@
 import {
+    index,
     integer,
     jsonb,
     pgTable,
     text,
     timestamp,
+    uniqueIndex,
     uuid,
     varchar
 } from "drizzle-orm/pg-core";
@@ -49,7 +51,10 @@ export const events = pgTable("events", {
     publishedAt: timestamp("published_at", {
         withTimezone: true
     })
-});
+}, (table) => [
+    index("events_status_published_at_created_at_idx")
+        .on(table.status, table.publishedAt, table.createdAt)
+]);
 
 export const eventDeliveries = pgTable("event_deliveries", {
     id: uuid("id")
@@ -87,4 +92,13 @@ export const eventDeliveries = pgTable("event_deliveries", {
     }),
 
     lastError: text("last_error")
-});
+}, (table) => [
+    uniqueIndex("event_deliveries_event_id_application_id_unique")
+        .on(table.eventId, table.applicationId),
+
+    index("event_deliveries_event_id_idx")
+        .on(table.eventId),
+
+    index("event_deliveries_status_next_retry_at_idx")
+        .on(table.status, table.nextRetryAt)
+]);

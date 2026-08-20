@@ -1,6 +1,10 @@
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
-import { connectRabbitMQ, disconnectRabbitMQ } from "./messaging/rabbitmq.js";
+import {
+    connectRabbitMQ,
+    disconnectRabbitMQ,
+    setupRabbitMQTopology
+} from "./messaging/rabbitmq.js";
 
 let shuttingDown = false;
 
@@ -14,7 +18,10 @@ try {
 
     try {
         await connectRabbitMQ();
+        await setupRabbitMQTopology();
+
         app.log.info("Sync worker connected to RabbitMQ");
+        app.log.info("Sync worker RabbitMQ topology ready");
     } catch {
         app.log.error("Sync worker failed to connect to RabbitMQ");
         throw new Error("RabbitMQ connection failed");

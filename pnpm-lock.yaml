@@ -17,12 +17,21 @@ importers:
 
   applications/app-a:
     dependencies:
+      '@fastify/cookie':
+        specifier: ^11.1.2
+        version: 11.1.2
+      '@fastify/formbody':
+        specifier: ^9.0.0
+        version: 9.0.0
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(postgres@3.4.9)
+      fast-json-stable-stringify:
+        specifier: ^2.1.0
+        version: 2.1.0
       fastify:
         specifier: ^5.11.3
         version: 5.11.3
@@ -33,6 +42,9 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      drizzle-kit:
+        specifier: ^0.31.10
+        version: 0.31.10
       tsx:
         specifier: ^4.23.12
         version: 4.23.12
@@ -42,12 +54,21 @@ importers:
 
   applications/app-b:
     dependencies:
+      '@fastify/cookie':
+        specifier: ^11.1.2
+        version: 11.1.2
+      '@fastify/formbody':
+        specifier: ^9.0.0
+        version: 9.0.0
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(postgres@3.4.9)
+      fast-json-stable-stringify:
+        specifier: ^2.1.0
+        version: 2.1.0
       fastify:
         specifier: ^5.11.3
         version: 5.11.3
@@ -58,6 +79,9 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      drizzle-kit:
+        specifier: ^0.31.10
+        version: 0.31.10
       tsx:
         specifier: ^4.23.12
         version: 4.23.12

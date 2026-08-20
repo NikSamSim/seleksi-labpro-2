@@ -165,7 +165,7 @@ export async function revokeLocalSessionByRawToken(
     const sessionTokenHash = hashOpaqueValue(rawToken);
     const now = new Date();
 
-    const revoked = await executor
+    const [revoked] = await executor
         .update(localSessions)
         .set({
             status: "revoked",
@@ -183,10 +183,12 @@ export async function revokeLocalSessionByRawToken(
             )
         )
         .returning({
-            id: localSessions.id
+            id: localSessions.id,
+            externalUserId:
+                localSessions.externalUserId
         });
 
-    return revoked.length;
+    return revoked ?? null;
 }
 
 export async function revokeSessionsByCentralSessionId(

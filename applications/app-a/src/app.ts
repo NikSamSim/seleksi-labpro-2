@@ -6,6 +6,7 @@ import { checkDatabase } from "./db/client.js";
 import { registerOAuthRoutes } from "./modules/oauth/routes.js";
 
 import { registerHomeRoutes } from "./modules/home/routes.js";
+import { registerSessionRoutes } from "./modules/sessions/routes.js";
 
 export function buildApp() {
     const app = Fastify({
@@ -47,6 +48,7 @@ export function buildApp() {
 
     registerHomeRoutes(app);
     registerOAuthRoutes(app);
+    registerSessionRoutes(app);
 
     return app;
 }

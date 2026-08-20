@@ -1,10 +1,15 @@
+import cookie from "@fastify/cookie";
 import Fastify from "fastify";
+
 import { checkDatabase } from "./db/client.js";
+import { registerOAuthRoutes } from "./modules/oauth/routes.js";
 
 export function buildApp() {
     const app = Fastify({
         logger: true
     });
+
+    app.register(cookie);
 
     app.get("/health/live", async () => {
         return {
@@ -23,8 +28,10 @@ export function buildApp() {
                 }
             });
         } catch {
-            app.log.warn("App A database readiness check failed");
-            
+            app.log.warn(
+                "App A database readiness check failed"
+            );
+
             return reply.code(503).send({
                 status: "not_ready",
                 components: {
@@ -33,6 +40,8 @@ export function buildApp() {
             });
         }
     });
+
+    registerOAuthRoutes(app);
 
     return app;
 }

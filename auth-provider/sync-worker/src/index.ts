@@ -5,6 +5,15 @@ import {
     disconnectRabbitMQ,
     setupRabbitMQTopology
 } from "./messaging/rabbitmq.js";
+import {
+    checkDatabase,
+    closeDatabase
+} from "./db/client.js";
+
+import {
+    startConsumerRecoveryLoop,
+    stopConsumerRecoveryLoop
+} from "./worker/consumer.js";
 
 let shuttingDown = false;
 
@@ -17,6 +26,22 @@ try {
     );
 
     try {
+        await checkDatabase();
+
+        app.log.info(
+            "Sync worker connected to primary database"
+        );
+    } catch {
+        app.log.error(
+            "Sync worker failed to connect to primary database"
+        );
+
+        throw new Error(
+            "Primary database connection failed"
+        );
+    }
+
+    try {
         await connectRabbitMQ();
         await setupRabbitMQTopology();
 
@@ -26,6 +51,12 @@ try {
         app.log.error("Sync worker failed to connect to RabbitMQ");
         throw new Error("RabbitMQ connection failed");
     }
+
+    startConsumerRecoveryLoop(app.log);
+
+    app.log.info(
+        "Sync worker consumer recovery loop started"
+    );
 
     await app.listen({
         port: env.SYNC_WORKER_PORT,
@@ -46,8 +77,25 @@ async function shutdown(signal: "SIGTERM" | "SIGINT") {
     app.log.info({ signal }, "Shutting down sync worker");
 
     try {
+        await stopConsumerRecoveryLoop();
+
         await app.close();
-        await disconnectRabbitMQ();
+
+        const results = await Promise.allSettled([
+            disconnectRabbitMQ(),
+            closeDatabase()
+        ]);
+
+        for (const result of results) {
+            if (result.status === "rejected") {
+                app.log.error(
+                    { err: result.reason },
+                    "Sync worker dependency shutdown failed"
+                );
+
+                process.exitCode = 1;
+            }
+        }
 
         app.log.info("Sync worker shutdown complete");
     }

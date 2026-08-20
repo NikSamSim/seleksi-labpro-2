@@ -6,6 +6,10 @@ import {
     disconnectRabbitMQ,
     setupRabbitMQTopology
 } from "./messaging/rabbitmq.js";
+import {
+    startPublisherLoop,
+    stopPublisherLoop
+} from "./publisher/service.js";
 
 let shuttingDown = false;
 
@@ -41,6 +45,12 @@ try {
         host: "0.0.0.0"
     });
 
+    startPublisherLoop(app.log);
+
+    app.log.info(
+        "Event publisher polling loop started"
+    );
+
     app.log.info("Event publisher started successfully");
 } catch {
     app.log.error("Failed to start event publisher");
@@ -56,6 +66,8 @@ async function shutdown(signal: "SIGTERM" | "SIGINT") {
 
     try {
         await app.close();
+
+        await stopPublisherLoop();
 
         const results = await Promise.allSettled([
             disconnectRabbitMQ(),

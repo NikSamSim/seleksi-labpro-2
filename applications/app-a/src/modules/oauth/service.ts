@@ -1,4 +1,9 @@
-import { lte } from "drizzle-orm";
+import {
+    and,
+    eq,
+    gt,
+    lte
+} from "drizzle-orm";
 
 import { applicationConfig } from "../../config/application.js";
 import { db } from "../../db/client.js";
@@ -26,6 +31,35 @@ export async function cleanupExpiredOAuthTransactions(
                 new Date()
             )
         );
+}
+
+export async function consumeOAuthTransaction(
+    rawState: string,
+    executor: OAuthWriteExecutor = db
+) {
+    const stateHash = hashOpaqueValue(rawState);
+    const now = new Date();
+
+    const [transaction] = await executor
+        .delete(oauthTransactions)
+        .where(
+            and(
+                eq(
+                    oauthTransactions.stateHash,
+                    stateHash
+                ),
+                gt(
+                    oauthTransactions.expiresAt,
+                    now
+                )
+            )
+        )
+        .returning({
+            codeVerifier:
+                oauthTransactions.codeVerifier
+        });
+
+    return transaction ?? null;
 }
 
 export async function createOAuthTransaction(

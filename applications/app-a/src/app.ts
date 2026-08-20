@@ -1,8 +1,11 @@
 import cookie from "@fastify/cookie";
 import Fastify from "fastify";
+import formbody from "@fastify/formbody";
 
 import { checkDatabase } from "./db/client.js";
 import { registerOAuthRoutes } from "./modules/oauth/routes.js";
+
+import { registerHomeRoutes } from "./modules/home/routes.js";
 
 export function buildApp() {
     const app = Fastify({
@@ -10,6 +13,7 @@ export function buildApp() {
     });
 
     app.register(cookie);
+    app.register(formbody);
 
     app.get("/health/live", async () => {
         return {
@@ -41,6 +45,7 @@ export function buildApp() {
         }
     });
 
+    registerHomeRoutes(app);
     registerOAuthRoutes(app);
 
     return app;

@@ -7,6 +7,7 @@ import { registerOAuthRoutes } from "./modules/oauth/routes.js";
 
 import { registerHomeRoutes } from "./modules/home/routes.js";
 import { registerSessionRoutes } from "./modules/sessions/routes.js";
+import { registerInternalLogoutRoutes } from "./modules/internal-logout/routes.js";
 
 export function buildApp() {
     const app = Fastify({
@@ -49,6 +50,7 @@ export function buildApp() {
     registerHomeRoutes(app);
     registerOAuthRoutes(app);
     registerSessionRoutes(app);
+    registerInternalLogoutRoutes(app);
 
     return app;
 }

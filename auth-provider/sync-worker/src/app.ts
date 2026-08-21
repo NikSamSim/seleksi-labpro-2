@@ -5,6 +5,7 @@ import { checkDatabase } from "./db/client.js";
 import {
     isConsumerActive
 } from "./worker/consumer.js";
+import { registerMetricsRoutes } from "./observability/routes.js";
 
 export function buildApp(
     isShuttingDown: () => boolean = () => false
@@ -12,6 +13,8 @@ export function buildApp(
     const app = Fastify({
         logger: true
     });
+
+    registerMetricsRoutes(app);
 
     app.get("/health/live", async () => {
         return {

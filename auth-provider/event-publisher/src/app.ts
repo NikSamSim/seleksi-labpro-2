@@ -2,6 +2,7 @@ import Fastify from "fastify";
 
 import { checkDatabase } from "./db/client.js";
 import { checkRabbitMQ } from "./messaging/rabbitmq.js";
+import { registerMetricsRoutes } from "./observability/routes.js";
 
 export function buildApp(
     isShuttingDown: () => boolean = () => false
@@ -9,6 +10,8 @@ export function buildApp(
     const app = Fastify({
         logger: true
     });
+
+    registerMetricsRoutes(app);
 
     app.get("/health/live", async () => {
         return {

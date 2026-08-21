@@ -8,6 +8,7 @@ import { registerOAuthRoutes } from "./modules/oauth/routes.js";
 import { registerHomeRoutes } from "./modules/home/routes.js";
 import { registerSessionRoutes } from "./modules/sessions/routes.js";
 import { registerInternalLogoutRoutes } from "./modules/internal-logout/routes.js";
+import { registerMetricsRoutes } from "./observability/routes.js";
 
 export function buildApp() {
     const app = Fastify({
@@ -16,6 +17,8 @@ export function buildApp() {
 
     app.register(cookie);
     app.register(formbody);
+
+    registerMetricsRoutes(app);
 
     app.get("/health/live", async () => {
         return {

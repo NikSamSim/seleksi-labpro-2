@@ -14,6 +14,7 @@ import { authRoutes } from "./modules/auth/routes.js";
 import { oauthRoutes } from "./modules/oauth/routes.js";
 import { mfaRoutes } from "./modules/mfa/routes.js";
 import { accountRoutes } from "./modules/account/routes.js";
+import { registerMetricsRoutes } from "./observability/routes.js";
 
 function isFastifyValidationError(
     error: unknown
@@ -152,6 +153,8 @@ export function buildApp(
 
     app.register(cookie);
     app.register(formbody);
+
+    registerMetricsRoutes(app);
 
     app.register(authRoutes);
     app.register(accountRoutes);

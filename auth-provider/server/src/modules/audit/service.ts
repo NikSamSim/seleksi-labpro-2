@@ -30,6 +30,8 @@ export type AuditEventType =
     | "policy_changed"
     | "mfa_enrolled"
     | "mfa_replaced"
+    | "mfa_disabled"
+    | "mfa_admin_reset"
     | "mfa_success"
     | "mfa_failed";
 

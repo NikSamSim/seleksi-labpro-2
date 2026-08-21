@@ -31,3 +31,7 @@ export const startTotpReplacementBodySchema =
             .string()
             .min(1)
     }).strict();
+
+export const disableMfaBodySchema = z.object({
+    currentPassword: z.string().min(1)
+}).strict();

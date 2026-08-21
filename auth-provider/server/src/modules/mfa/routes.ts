@@ -13,6 +13,7 @@ import {
 } from "../sessions/service.js";
 import {
     confirmTotpEnrollmentBodySchema,
+    disableMfaBodySchema,
     loginMfaBodySchema,
     startTotpReplacementBodySchema
 } from "./schemas.js";
@@ -26,6 +27,7 @@ import {
     verifyMfaRecovery,
     verifyMfaTotp
 } from "./service.js";
+import { disableOwnMfa } from "./reset-service.js";
 
 async function requireMfaSession(
     request: FastifyRequest,
@@ -343,6 +345,46 @@ function renderMfaReplacementConfirmError(
     `);
 }
 
+function renderMfaDisablePage(
+    errorMessage?: string,
+    needsReauthentication = false
+) {
+    return renderPage(`
+        <h2>Disable MFA</h2>
+        <p><strong>Warning:</strong> disabling MFA will remove your authenticator and invalidate all recovery codes.</p>
+        <p>All current sessions will also be revoked and you will need to login again.</p>
+
+        ${errorMessage ? `<p>${errorMessage}</p>` : ""}
+
+        ${
+            needsReauthentication
+                ? `
+                    <p>MFA verification pada session ini sudah terlalu lama.</p>
+                    <p><a href="/login?returnTo=%2Fsecurity%2Fmfa%2Fdisable">Re-authenticate</a></p>
+                `
+                : `
+                    <form method="post" action="/security/mfa/disable">
+                        <div>
+                            <label for="currentPassword">Current password</label>
+                            <input
+                                id="currentPassword"
+                                name="currentPassword"
+                                type="password"
+                                autocomplete="current-password"
+                                required
+                            />
+                        </div>
+
+                        <p>This action cannot be undone without enrolling MFA again.</p>
+                        <button type="submit">Disable MFA</button>
+                    </form>
+                `
+        }
+
+        <p><a href="/security/mfa">Cancel</a></p>
+    `);
+}
+
 export async function mfaRoutes(app: FastifyInstance) {
     app.get("/login/mfa", async (request, reply) => {
         const rawToken =
@@ -540,6 +582,12 @@ export async function mfaRoutes(app: FastifyInstance) {
                         </p>
 
                         <p>
+                            <a href="/security/mfa/disable">
+                                Disable MFA
+                            </a>
+                        </p>
+
+                        <p>
                             <a href="/account">
                                 Back to account
                             </a>
@@ -558,6 +606,114 @@ export async function mfaRoutes(app: FastifyInstance) {
                     <form method="post" action="/security/mfa/start">
                         <button type="submit">Enable TOTP MFA</button>
                     </form>
+                `)
+            );
+    });
+
+    app.get("/security/mfa/disable", async (request, reply) => {
+        const principal = await requireMfaSession(request, reply);
+
+        if (!principal) {
+            return;
+        }
+
+        const status = await getUserMfaStatus(principal.user.id);
+
+        if (!status.enabled) {
+            return reply
+                .code(303)
+                .header("location", "/security/mfa")
+                .send();
+        }
+
+        reply.header("Cache-Control", "no-store");
+
+        if (
+            !hasRecentMfaVerification({
+                mfaVerifiedAt: principal.session.mfaVerifiedAt,
+                mfaMethod: principal.session.mfaMethod
+            })
+        ) {
+            return reply
+                .type("text/html; charset=utf-8")
+                .send(
+                    renderMfaDisablePage(
+                        "Verifikasi MFA terbaru diperlukan.",
+                        true
+                    )
+                );
+        }
+
+        return reply
+            .type("text/html; charset=utf-8")
+            .send(renderMfaDisablePage());
+    });
+
+    app.post("/security/mfa/disable", async (request, reply) => {
+        const principal = await requireMfaSession(request, reply);
+
+        if (!principal) {
+            return;
+        }
+
+        const parsed = disableMfaBodySchema.safeParse(request.body);
+
+        reply.header("Cache-Control", "no-store");
+
+        if (!parsed.success) {
+            return reply
+                .code(400)
+                .type("text/html; charset=utf-8")
+                .send(renderMfaDisablePage("Password saat ini wajib diisi."));
+        }
+
+        try {
+            await disableOwnMfa({
+                userId: principal.user.id,
+                sessionId: principal.session.id,
+                currentPassword: parsed.data.currentPassword,
+                session: {
+                    mfaVerifiedAt: principal.session.mfaVerifiedAt,
+                    mfaMethod: principal.session.mfaMethod
+                },
+                ipAddress: request.ip
+            });
+        } catch (error) {
+            if (error instanceof AppError && error.code === "UNAUTHORIZED") {
+                return reply
+                    .code(401)
+                    .type("text/html; charset=utf-8")
+                    .send(renderMfaDisablePage(error.message));
+            }
+
+            if (error instanceof AppError && error.code === "FORBIDDEN") {
+                return reply
+                    .code(403)
+                    .type("text/html; charset=utf-8")
+                    .send(renderMfaDisablePage(error.message, true));
+            }
+
+            if (error instanceof AppError && error.code === "CONFLICT") {
+                return reply
+                    .code(303)
+                    .header("location", "/security/mfa")
+                    .send();
+            }
+
+            throw error;
+        }
+
+        reply.clearCookie(env.SSO_COOKIE_NAME, { path: "/" });
+        reply.clearCookie(env.MFA_PENDING_COOKIE_NAME, { path: "/" });
+
+        return reply
+            .type("text/html; charset=utf-8")
+            .send(
+                renderPage(`
+                    <h2>MFA Disabled Successfully</h2>
+                    <p>MFA has been disabled and all recovery codes are now invalid.</p>
+                    <p>All previous sessions have been revoked.</p>
+                    <p><a href="/login?returnTo=%2Faccount">Login again</a></p>
                 `)
             );
     });

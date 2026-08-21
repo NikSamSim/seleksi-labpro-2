@@ -3,6 +3,9 @@ import type {
     OutboxEventPayload
 } from "../messaging/message.js";
 import {
+    recordSyncDeliveryMetrics
+} from "../observability/worker-metrics.js";
+import {
     createInternalSignature
 } from "../security/internal-signature.js";
 
@@ -78,6 +81,26 @@ export async function deliverInternalLogout(input: {
             input.secret
         );
 
+    const startedAt =
+        process.hrtime.bigint();
+
+    const finish = (
+        result: InternalLogoutDeliveryResult
+    ): InternalLogoutDeliveryResult => {
+        const durationSeconds =
+            Number(
+                process.hrtime.bigint() -
+                    startedAt
+            ) / 1_000_000_000;
+
+        recordSyncDeliveryMetrics(
+            result.result,
+            durationSeconds
+        );
+
+        return result;
+    };
+
     try {
         const response = await fetch(
             input.targetUrl,
@@ -103,25 +126,25 @@ export async function deliverInternalLogout(input: {
         );
 
         if (response.ok) {
-            return {
+            return finish({
                 result: "success",
                 statusCode: response.status
-            };
+            });
         }
 
-        return {
+        return finish({
             result: "http_error",
             statusCode: response.status
-        };
+        });
     } catch (error) {
         if (isTimeoutError(error)) {
-            return {
+            return finish({
                 result: "timeout"
-            };
+            });
         }
 
-        return {
+        return finish({
             result: "network_error"
-        };
+        });
     }
 }

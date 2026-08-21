@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { collectDefaultMetrics, Counter, Histogram, Registry } from "prom-client";
+import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from "prom-client";
 
 export const metricsRegistry = new Registry();
 
@@ -31,6 +31,26 @@ const httpRequestDurationSeconds = new Histogram({
     help: "HTTP request duration in seconds",
     labelNames: ["method", "route", "status_code"] as const,
     buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],
+    registers: [metricsRegistry]
+});
+
+export const rabbitMQQueueMessagesReady = new Gauge({
+    name: "labpro_rabbitmq_queue_messages_ready",
+    help: "Number of messages ready to be consumed from a RabbitMQ queue",
+    labelNames: ["queue", "kind"] as const,
+    registers: [metricsRegistry]
+});
+
+export const rabbitMQQueueConsumers = new Gauge({
+    name: "labpro_rabbitmq_queue_consumers",
+    help: "Number of consumers currently attached to a RabbitMQ queue",
+    labelNames: ["queue", "kind"] as const,
+    registers: [metricsRegistry]
+});
+
+export const rabbitMQQueueMetricsUp = new Gauge({
+    name: "labpro_rabbitmq_queue_metrics_up",
+    help: "Whether RabbitMQ queue metrics were collected successfully",
     registers: [metricsRegistry]
 });
 

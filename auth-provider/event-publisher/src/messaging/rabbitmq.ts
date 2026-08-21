@@ -10,6 +10,12 @@ import { assertSyncTopology } from "./topology.js";
 let connection: ChannelModel | null = null;
 let publisherConfirmChannel: ConfirmChannel | null = null;
 
+export type RabbitMQQueueStats = {
+    queue: string;
+    messageCount: number;
+    consumerCount: number;
+};
+
 export async function connectRabbitMQ() {
     if (connection) {
         return connection;
@@ -67,6 +73,35 @@ export async function checkRabbitMQ() {
 
     const channel = await currentConnection.createChannel();
     await channel.close();
+}
+
+export async function getRabbitMQQueueStats(
+    queueNames: string[]
+): Promise<RabbitMQQueueStats[]> {
+    const currentConnection = await connectRabbitMQ();
+    const channel = await currentConnection.createChannel();
+
+    try {
+        const result: RabbitMQQueueStats[] = [];
+
+        for (const queueName of queueNames) {
+            const queue = await channel.checkQueue(queueName);
+
+            result.push({
+                queue: queueName,
+                messageCount: queue.messageCount,
+                consumerCount: queue.consumerCount
+            });
+        }
+
+        return result;
+    } finally {
+        try {
+            await channel.close();
+        } catch {
+            // Channel may already be closed.
+        }
+    }
 }
 
 export async function disconnectRabbitMQ() {

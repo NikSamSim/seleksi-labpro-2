@@ -9,6 +9,7 @@ import {
     groupRoutes,
     membershipRoutes
 } from "../groups/routes.js";
+import { observabilityRoutes } from "../observability/routes.js";
 import { policyRoutes } from "../policies/routes.js";
 import { userRoutes } from "../users/routes.js";
 
@@ -77,5 +78,9 @@ export async function adminRoutes(
 
     app.register(policyRoutes, {
         prefix: "/applications"
+    });
+
+    app.register(observabilityRoutes, {
+        prefix: "/observability"
     });
 }

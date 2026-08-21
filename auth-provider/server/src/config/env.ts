@@ -15,6 +15,7 @@ const schema = z.object({
 
     PRIMARY_DATABASE_URL: z.string().min(1),
     RABBITMQ_URL: z.string().min(1),
+    PROMETHEUS_URL: z.string().url(),
 
     CONTROL_PANEL_ORIGIN: z.string().url(),
 

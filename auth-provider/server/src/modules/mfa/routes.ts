@@ -510,17 +510,13 @@ export async function mfaRoutes(app: FastifyInstance) {
             { path: "/" }
         );
 
-        if (result.returnTo) {
-            return reply
-                .code(303)
-                .header("location", result.returnTo)
-                .send();
-        }
-
-        return {
-            user: result.user,
-            session: result.session
-        };
+        return reply
+            .code(303)
+            .header(
+                "location",
+                result.returnTo ?? "/account"
+            )
+            .send();
     });
 
     app.get("/security/mfa", async (request, reply) => {

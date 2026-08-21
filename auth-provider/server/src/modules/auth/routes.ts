@@ -87,16 +87,76 @@ function renderLoginPage(
 }
 
 export async function authRoutes(app: FastifyInstance) {
+    app.get("/", async (request, reply) => {
+        reply.header("Cache-Control", "no-store");
+
+        const rawToken =
+            request.cookies[env.SSO_COOKIE_NAME];
+
+        if (!rawToken) {
+            return reply
+                .code(303)
+                .header("location", "/login")
+                .send();
+        }
+
+        const result =
+            await validateCentralSession(rawToken);
+
+        if (!result) {
+            reply.clearCookie(
+                env.SSO_COOKIE_NAME,
+                {
+                    path: "/"
+                }
+            );
+
+            return reply
+                .code(303)
+                .header("location", "/login")
+                .send();
+        }
+
+        return reply
+            .code(303)
+            .header("location", "/account")
+            .send();
+    });
+
     app.get("/login", async (request, reply) => {
         const query = loginQuerySchema.parse(request.query);
 
         const returnTo = resolveSafeReturnTo(query.returnTo);
 
+        reply.header("Cache-Control", "no-store");
+
+        if (!returnTo) {
+            const rawToken =
+                request.cookies[env.SSO_COOKIE_NAME];
+
+            if (rawToken) {
+                const result =
+                    await validateCentralSession(rawToken);
+
+                if (result) {
+                    return reply
+                        .code(303)
+                        .header("location", "/account")
+                        .send();
+                }
+
+                reply.clearCookie(
+                    env.SSO_COOKIE_NAME,
+                    {
+                        path: "/"
+                    }
+                );
+            }
+        }
+
         const action = returnTo
             ? `/login?returnTo=${encodeURIComponent(returnTo)}`
             : "/login";
-
-        reply.header("Cache-Control", "no-store");
 
         return reply
             .type("text/html; charset=utf-8")
@@ -260,16 +320,14 @@ export async function authRoutes(app: FastifyInstance) {
             }
         );
 
-        if (returnTo) {
-            return reply
-                .code(303)
-                .header("location", returnTo)
-                .send();
-        }
+        reply.header("Cache-Control", "no-store");
 
-        return {
-            user: result.user,
-            session: result.session
-        };
+        return reply
+            .code(303)
+            .header(
+                "location",
+                returnTo ?? "/account"
+            )
+            .send();
     });
 }

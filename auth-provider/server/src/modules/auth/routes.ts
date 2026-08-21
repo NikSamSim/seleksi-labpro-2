@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import { env } from "../../config/env.js";
+import { AppError } from "../../http/errors.js";
 
 import {
     isSafeReturnTo,
@@ -27,10 +28,67 @@ function resolveSafeReturnTo(
     return undefined;
 }
 
+function renderLoginPage(
+    action: string, errorMessage?: string
+) {
+    return `
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    />
+    <title>Login - Labpro Auth Provider</title>
+</head>
+<body>
+    <main>
+        <h1>Labpro Auth Provider</h1>
+        <h2>Login</h2>
+
+        ${
+            errorMessage
+                ? `<p>${errorMessage}</p>`
+                : ""
+        }
+
+        <form method="post" action="${action}">
+            <div>
+                <label for="email">Email</label>
+                <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autocomplete="username"
+                    required
+                />
+            </div>
+
+            <div>
+                <label for="password">Password</label>
+                <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autocomplete="current-password"
+                    required
+                />
+            </div>
+
+            <button type="submit">
+                Login
+            </button>
+        </form>
+    </main>
+</body>
+</html>
+    `;
+}
+
 export async function authRoutes(app: FastifyInstance) {
     app.get("/login", async (request, reply) => {
-        const query =
-            loginQuerySchema.parse(request.query);
+        const query = loginQuerySchema.parse(request.query);
 
         const returnTo = resolveSafeReturnTo(query.returnTo);
 
@@ -38,55 +96,11 @@ export async function authRoutes(app: FastifyInstance) {
             ? `/login?returnTo=${encodeURIComponent(returnTo)}`
             : "/login";
 
+        reply.header("Cache-Control", "no-store");
+
         return reply
             .type("text/html; charset=utf-8")
-            .send(`
-    <!doctype html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1.0"
-        />
-        <title>Login - Labpro Auth Provider</title>
-    </head>
-    <body>
-        <main>
-            <h1>Labpro Auth Provider</h1>
-            <h2>Login</h2>
-
-            <form method="post" action="${action}">
-                <div>
-                    <label for="email">Email</label>
-                    <input
-                        id="email"
-                        name="email"
-                        type="email"
-                        autocomplete="username"
-                        required
-                    />
-                </div>
-
-                <div>
-                    <label for="password">Password</label>
-                    <input
-                        id="password"
-                        name="password"
-                        type="password"
-                        autocomplete="current-password"
-                        required
-                    />
-                </div>
-
-                <button type="submit">
-                    Login
-                </button>
-            </form>
-        </main>
-    </body>
-    </html>
-            `);
+            .send(renderLoginPage(action));
     });
 
     app.get("/session", async (request, reply) => {
@@ -159,17 +173,57 @@ export async function authRoutes(app: FastifyInstance) {
         const input =
             loginBodySchema.parse(request.body);
 
-        const result = await login(
-            input,
-            {
-                ipAddress: request.ip,
-                userAgent:
-                    request.headers["user-agent"] ??
-                    null,
-                returnTo,
-                logger: request.log
+        let result;
+
+        try {
+            result = await login(
+                input,
+                {
+                    ipAddress: request.ip,
+                    userAgent:
+                        request.headers["user-agent"] ??
+                        null,
+                    returnTo,
+                    logger: request.log
+                }
+            );
+        } catch (error) {
+            if (
+                error instanceof AppError &&
+                error.statusCode === 401 &&
+                error.code === "UNAUTHORIZED"
+            ) {
+                const action = returnTo
+                    ? `/login?returnTo=${encodeURIComponent(returnTo)}`
+                    : "/login";
+
+                request.log.warn(
+                    {
+                        requestId: request.id,
+                        code: error.code,
+                        statusCode: error.statusCode
+                    },
+                    "Login failed"
+                );
+
+                reply.header(
+                    "Cache-Control",
+                    "no-store"
+                );
+
+                return reply
+                    .code(401)
+                    .type("text/html; charset=utf-8")
+                    .send(
+                        renderLoginPage(
+                            action,
+                            error.message
+                        )
+                    );
             }
-        );
+
+            throw error;
+        }
 
         if (result.status === "mfa_required") {
             reply.setCookie(

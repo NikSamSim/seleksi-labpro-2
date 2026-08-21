@@ -37,7 +37,12 @@ const httpRequestDurationSeconds = new Histogram({
 const requestStartTimes = new WeakMap<FastifyRequest, bigint>();
 
 function shouldObserveRoute(route: string) {
-    return route !== "/metrics" && route !== "/health/live" && route !== "/health/ready";
+    return (
+        route !== "/metrics" &&
+        route !== "/health/live" &&
+        route !== "/health/ready" &&
+        route !== "/admin/observability"
+    );
 }
 
 export function registerHttpMetrics(app: FastifyInstance) {

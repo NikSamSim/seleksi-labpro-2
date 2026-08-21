@@ -15,6 +15,7 @@ import { ApplicationDetailPage } from "./pages/ApplicationDetailPage";
 import { ApplicationsPage } from "./pages/ApplicationsPage";
 import { GroupDetailPage } from "./pages/GroupDetailPage";
 import { GroupsPage } from "./pages/GroupsPage";
+import { ObservabilityPage } from "./pages/ObservabilityPage";
 import { UserDetailPage } from "./pages/UserDetailPage";
 import { UsersPage } from "./pages/UsersPage";
 
@@ -48,6 +49,9 @@ type View =
     | {
         type: "application";
         applicationId: string;
+    }
+    | {
+        type: "observability";
     };
 
 function App() {
@@ -220,6 +224,11 @@ function App() {
                         }
                     />
                 );
+
+            case "observability":
+                return (
+                    <ObservabilityPage />
+                );
         }
     }
 
@@ -362,6 +371,17 @@ function App() {
                         }
                     >
                         Applications
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() =>
+                            setView({
+                                type: "observability"
+                            })
+                        }
+                    >
+                        Observability
                     </button>
                 </nav>
             </header>

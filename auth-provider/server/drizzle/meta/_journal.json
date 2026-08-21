@@ -29,6 +29,27 @@
       "when": 1787301266517,
       "tag": "0003_material_alex_power",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787306954854,
+      "tag": "0004_motionless_molten_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787309053710,
+      "tag": "0005_rich_masked_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787309397020,
+      "tag": "0006_next_shadowcat",
+      "breakpoints": true
     }
   ]
 }

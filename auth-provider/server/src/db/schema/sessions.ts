@@ -43,6 +43,14 @@ export const ssoSessions = pgTable("sso_sessions", {
         withTimezone: true
     }),
 
+    mfaVerifiedAt: timestamp("mfa_verified_at", {
+        withTimezone: true
+    }),
+
+    mfaMethod: varchar("mfa_method", {
+        length: 32
+    }),
+
     revokedAt: timestamp("revoked_at", {
         withTimezone: true
     }),

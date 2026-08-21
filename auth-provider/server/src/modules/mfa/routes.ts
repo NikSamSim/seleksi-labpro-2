@@ -7,16 +7,22 @@ import QRCode from "qrcode";
 
 import { env } from "../../config/env.js";
 import { AppError } from "../../http/errors.js";
-import { validateCentralSession } from "../sessions/service.js";
+import {
+    hasRecentMfaVerification,
+    validateCentralSession
+} from "../sessions/service.js";
 import {
     confirmTotpEnrollmentBodySchema,
-    loginMfaBodySchema
+    loginMfaBodySchema,
+    startTotpReplacementBodySchema
 } from "./schemas.js";
 import {
     confirmTotpEnrollment,
+    confirmTotpReplacement,
     getMfaChallenge,
     getUserMfaStatus,
     startTotpEnrollment,
+    startTotpReplacement,
     verifyMfaRecovery,
     verifyMfaTotp
 } from "./service.js";
@@ -121,6 +127,219 @@ function renderLoginMfaPage(errorMessage?: string) {
 
             <button type="submit">Use recovery code</button>
         </form>
+    `);
+}
+
+function renderMfaReplacementPage(
+    errorMessage?: string,
+    needsReauthentication = false
+) {
+    return renderPage(`
+        <h2>Replace Authenticator</h2>
+
+        <p>
+            Authenticator lama akan tetap aktif sampai
+            authenticator baru berhasil dikonfirmasi.
+        </p>
+
+        ${
+            errorMessage
+                ? `<p>${errorMessage}</p>`
+                : ""
+        }
+
+        ${
+            needsReauthentication
+                ? `
+                    <p>
+                        Verifikasi MFA pada session ini
+                        sudah terlalu lama.
+                    </p>
+
+                    <p>
+                        <a
+                            href="/login?returnTo=%2Fsecurity%2Fmfa%2Freplace"
+                        >
+                            Re-authenticate
+                        </a>
+                    </p>
+                `
+                : `
+                    <form
+                        method="post"
+                        action="/security/mfa/replace/start"
+                    >
+                        <div>
+                            <label for="currentPassword">
+                                Current password
+                            </label>
+
+                            <input
+                                id="currentPassword"
+                                name="currentPassword"
+                                type="password"
+                                autocomplete="current-password"
+                                required
+                            />
+                        </div>
+
+                        <button type="submit">
+                            Continue
+                        </button>
+                    </form>
+                `
+        }
+
+        <p>
+            <a href="/security/mfa">
+                Back to MFA settings
+            </a>
+        </p>
+    `);
+}
+
+function renderMfaReplacementSetupPage(
+    qrDataUrl: string,
+    secret: string,
+    expiresAt: Date
+) {
+    return renderPage(`
+        <h2>Set Up New Authenticator</h2>
+
+        <p>
+            <strong>
+                Authenticator lama masih aktif.
+            </strong>
+        </p>
+
+        <p>
+            Authenticator baru belum akan digunakan
+            sampai verification code berhasil
+            dikonfirmasi.
+        </p>
+
+        <p>
+            Scan QR berikut menggunakan perangkat
+            atau authenticator baru.
+        </p>
+
+        <div>
+            <img
+                src="${qrDataUrl}"
+                alt="New TOTP authenticator QR code"
+            />
+        </div>
+
+        <p>Manual setup key:</p>
+        <p>
+            <code>${secret}</code>
+        </p>
+
+        <p>
+            Pending setup expires at:
+            <code>${expiresAt.toISOString()}</code>
+        </p>
+
+        <form
+            method="post"
+            action="/security/mfa/replace/confirm"
+        >
+            <div>
+                <label for="code">
+                    Verification code from new authenticator
+                </label>
+
+                <input
+                    id="code"
+                    name="code"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    pattern="[0-9]{6}"
+                    minlength="6"
+                    maxlength="6"
+                    required
+                    autofocus
+                />
+            </div>
+
+            <button type="submit">
+                Confirm New Authenticator
+            </button>
+        </form>
+
+        <p>
+            <a href="/security/mfa">
+                Cancel replacement
+            </a>
+        </p>
+    `);
+}
+
+function renderMfaReplacementConfirmError(
+    message: string,
+    locked = false
+) {
+    return renderPage(`
+        <h2>Authenticator Replacement Failed</h2>
+
+        <p>${message}</p>
+
+        ${
+            locked
+                ? `
+                    <p>
+                        Batas percobaan telah tercapai.
+                        Mulai replacement dari awal.
+                    </p>
+
+                    <p>
+                        <a href="/security/mfa/replace">
+                            Restart replacement
+                        </a>
+                    </p>
+                `
+                : `
+                    <p>
+                        Pastikan kode berasal dari
+                        authenticator baru.
+                    </p>
+
+                    <form
+                        method="post"
+                        action="/security/mfa/replace/confirm"
+                    >
+                        <div>
+                            <label for="code">
+                                Verification code
+                            </label>
+
+                            <input
+                                id="code"
+                                name="code"
+                                type="text"
+                                inputmode="numeric"
+                                autocomplete="one-time-code"
+                                pattern="[0-9]{6}"
+                                minlength="6"
+                                maxlength="6"
+                                required
+                                autofocus
+                            />
+                        </div>
+
+                        <button type="submit">
+                            Try Again
+                        </button>
+                    </form>
+
+                    <p>
+                        <a href="/security/mfa/replace">
+                            Restart replacement
+                        </a>
+                    </p>
+                `
+        }
     `);
 }
 
@@ -284,8 +503,27 @@ export async function mfaRoutes(app: FastifyInstance) {
                 .send(
                     renderPage(`
                         <h2>Multi-Factor Authentication</h2>
-                        <p>MFA Status: <strong>Enabled</strong></p>
-                        <p>TOTP MFA is active for this account.</p>
+
+                        <p>
+                            MFA Status:
+                            <strong>Enabled</strong>
+                        </p>
+
+                        <p>
+                            TOTP MFA is active for this account.
+                        </p>
+
+                        <p>
+                            <a href="/security/mfa/replace">
+                                Replace Authenticator
+                            </a>
+                        </p>
+
+                        <p>
+                            <a href="/account">
+                                Back to account
+                            </a>
+                        </p>
                     `)
                 );
         }
@@ -303,6 +541,336 @@ export async function mfaRoutes(app: FastifyInstance) {
                 `)
             );
     });
+
+    app.post(
+        "/security/mfa/replace/confirm",
+        async (request, reply) => {
+            const principal =
+                await requireMfaSession(
+                    request,
+                    reply
+                );
+
+            if (!principal) {
+                return;
+            }
+
+            const input =
+                confirmTotpEnrollmentBodySchema
+                    .parse(request.body);
+
+            const result =
+                await confirmTotpReplacement({
+                    userId:
+                        principal.user.id,
+                    sessionId:
+                        principal.session.id,
+                    code:
+                        input.code,
+                    ipAddress:
+                        request.ip
+                });
+
+            reply.header(
+                "Cache-Control",
+                "no-store"
+            );
+
+            if (
+                result.status ===
+                "invalid_enrollment"
+            ) {
+                return reply
+                    .code(400)
+                    .type(
+                        "text/html; charset=utf-8"
+                    )
+                    .send(
+                        renderMfaReplacementConfirmError(
+                            "Replacement MFA tidak tersedia atau telah kedaluwarsa.",
+                            true
+                        )
+                    );
+            }
+
+            if (
+                result.status ===
+                "invalid_code"
+            ) {
+                return reply
+                    .code(400)
+                    .type(
+                        "text/html; charset=utf-8"
+                    )
+                    .send(
+                        renderMfaReplacementConfirmError(
+                            "Kode authenticator baru tidak valid.",
+                            result.locked
+                        )
+                    );
+            }
+
+            reply.clearCookie(
+                env.SSO_COOKIE_NAME,
+                {
+                    path: "/"
+                }
+            );
+
+            const recoveryCodeItems =
+                result.recoveryCodes
+                    .map(
+                        (code) =>
+                            `<li><code>${code}</code></li>`
+                    )
+                    .join("");
+
+            return reply
+                .type(
+                    "text/html; charset=utf-8"
+                )
+                .send(
+                    renderPage(`
+                        <h2>
+                            Authenticator Replaced Successfully
+                        </h2>
+
+                        <p>
+                            Authenticator baru sekarang aktif.
+                        </p>
+
+                        <p>
+                            Semua session lama telah dicabut.
+                            Silakan login kembali setelah
+                            menyimpan recovery codes berikut.
+                        </p>
+
+                        <p>
+                            <strong>
+                                Save these recovery codes now.
+                            </strong>
+                        </p>
+
+                        <p>
+                            Recovery codes lama sudah tidak berlaku.
+                            Setiap code baru hanya dapat digunakan sekali
+                            dan tidak akan ditampilkan lagi.
+                        </p>
+
+                        <ul>
+                            ${recoveryCodeItems}
+                        </ul>
+
+                        <p>
+                            <a href="/login?returnTo=%2Faccount">
+                                Login again
+                            </a>
+                        </p>
+                    `)
+                );
+        }
+    );
+
+    app.get(
+        "/security/mfa/replace",
+        async (request, reply) => {
+            const principal =
+                await requireMfaSession(
+                    request,
+                    reply
+                );
+
+            if (!principal) {
+                return;
+            }
+
+            const status =
+                await getUserMfaStatus(
+                    principal.user.id
+                );
+
+            if (!status.enabled) {
+                return reply
+                    .code(303)
+                    .header(
+                        "location",
+                        "/security/mfa"
+                    )
+                    .send();
+            }
+
+            reply.header(
+                "Cache-Control",
+                "no-store"
+            );
+
+            if (
+                !hasRecentMfaVerification(
+                    {
+                        mfaVerifiedAt:
+                            principal.session
+                                .mfaVerifiedAt,
+
+                        mfaMethod:
+                            principal.session
+                                .mfaMethod
+                    }
+                )
+            ) {
+                return reply
+                    .type(
+                        "text/html; charset=utf-8"
+                    )
+                    .send(
+                        renderMfaReplacementPage(
+                            "Verifikasi MFA terbaru diperlukan.",
+                            true
+                        )
+                    );
+            }
+
+            return reply
+                .type(
+                    "text/html; charset=utf-8"
+                )
+                .send(
+                    renderMfaReplacementPage()
+                );
+        }
+    );
+
+    app.post(
+        "/security/mfa/replace/start",
+        async (request, reply) => {
+            const principal =
+                await requireMfaSession(
+                    request,
+                    reply
+                );
+
+            if (!principal) {
+                return;
+            }
+
+            const parsed =
+                startTotpReplacementBodySchema
+                    .safeParse(
+                        request.body
+                    );
+
+            reply.header(
+                "Cache-Control",
+                "no-store"
+            );
+
+            if (!parsed.success) {
+                return reply
+                    .code(400)
+                    .type(
+                        "text/html; charset=utf-8"
+                    )
+                    .send(
+                        renderMfaReplacementPage(
+                            "Password saat ini wajib diisi."
+                        )
+                    );
+            }
+
+            try {
+                const replacement =
+                    await startTotpReplacement({
+                        userId:
+                            principal.user.id,
+
+                        sessionId:
+                            principal.session.id,
+
+                        accountLabel:
+                            principal.user.email,
+
+                        currentPassword:
+                            parsed.data
+                                .currentPassword,
+
+                        session: {
+                            mfaVerifiedAt:
+                                principal.session
+                                    .mfaVerifiedAt,
+
+                            mfaMethod:
+                                principal.session
+                                    .mfaMethod
+                        }
+                    });
+
+                const qrDataUrl =
+                    await QRCode.toDataURL(
+                        replacement.otpauthUri
+                    );
+
+                return reply
+                    .type(
+                        "text/html; charset=utf-8"
+                    )
+                    .send(
+                        renderMfaReplacementSetupPage(
+                            qrDataUrl,
+                            replacement.secret,
+                            replacement.expiresAt
+                        )
+                    );
+            } catch (error) {
+                if (
+                    error instanceof AppError &&
+                    error.code ===
+                        "UNAUTHORIZED"
+                ) {
+                    return reply
+                        .code(401)
+                        .type(
+                            "text/html; charset=utf-8"
+                        )
+                        .send(
+                            renderMfaReplacementPage(
+                                error.message
+                            )
+                        );
+                }
+
+                if (
+                    error instanceof AppError &&
+                    error.code === "FORBIDDEN"
+                ) {
+                    return reply
+                        .code(403)
+                        .type(
+                            "text/html; charset=utf-8"
+                        )
+                        .send(
+                            renderMfaReplacementPage(
+                                error.message,
+                                true
+                            )
+                        );
+                }
+
+                if (
+                    error instanceof AppError &&
+                    error.code === "CONFLICT"
+                ) {
+                    return reply
+                        .code(303)
+                        .header(
+                            "location",
+                            "/security/mfa"
+                        )
+                        .send();
+                }
+
+                throw error;
+            }
+        }
+    );
 
     app.post("/security/mfa/start", async (request, reply) => {
         const principal = await requireMfaSession(

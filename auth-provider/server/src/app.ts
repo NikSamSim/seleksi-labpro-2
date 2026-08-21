@@ -13,6 +13,7 @@ import { adminRoutes } from "./modules/admin/routes.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { oauthRoutes } from "./modules/oauth/routes.js";
 import { mfaRoutes } from "./modules/mfa/routes.js";
+import { accountRoutes } from "./modules/account/routes.js";
 
 function isFastifyValidationError(
     error: unknown
@@ -153,6 +154,7 @@ export function buildApp(
     app.register(formbody);
 
     app.register(authRoutes);
+    app.register(accountRoutes);
     app.register(mfaRoutes);
     app.register(oauthRoutes);
 

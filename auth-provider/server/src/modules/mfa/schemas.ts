@@ -24,3 +24,10 @@ export const loginMfaBodySchema =
                 .regex(/^[A-Za-z0-9_-]{16}$/)
         }).strict()
     ]);
+
+export const startTotpReplacementBodySchema =
+    z.object({
+        currentPassword: z
+            .string()
+            .min(1)
+    }).strict();

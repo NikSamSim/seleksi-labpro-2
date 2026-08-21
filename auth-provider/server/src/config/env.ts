@@ -41,6 +41,8 @@ const schema = z.object({
     MFA_ISSUER: z.string().min(1),
     MFA_PENDING_COOKIE_NAME: z.string().min(1),
     MFA_CHALLENGE_TTL_SECONDS: z.coerce.number().int().positive(),
+    MFA_RECENT_VERIFICATION_SECONDS: z.coerce.number().int().positive().default(600),
+    MFA_ENROLLMENT_TTL_SECONDS: z.coerce.number().int().positive().default(600),
     MFA_ENCRYPTION_KEY_BASE64: z.string().min(1).refine(
         (value) => {
             const decoded = Buffer.from(value, "base64");

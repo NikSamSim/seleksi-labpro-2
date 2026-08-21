@@ -1,0 +1,2 @@
+DROP INDEX "mfa_enrollments_user_purpose_session_idx";--> statement-breakpoint
+CREATE UNIQUE INDEX "mfa_enrollments_user_type_purpose_unique" ON "mfa_enrollments" USING btree ("user_id","type","purpose");

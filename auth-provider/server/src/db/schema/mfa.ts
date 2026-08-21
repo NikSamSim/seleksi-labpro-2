@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { users } from "./users.js";
+import { ssoSessions } from "./sessions.js";
 
 export const userMfaMethods = pgTable(
     "user_mfa_methods",
@@ -103,6 +104,66 @@ export const mfaChallenges = pgTable(
             .defaultNow()
             .notNull()
     }
+);
+
+export const mfaEnrollments = pgTable(
+    "mfa_enrollments",
+    {
+        id: uuid("id")
+            .defaultRandom()
+            .primaryKey(),
+
+        userId: uuid("user_id")
+            .notNull()
+            .references(() => users.id),
+
+        sessionId: uuid("session_id")
+            .notNull()
+            .references(() => ssoSessions.id),
+
+        type: varchar("type", {
+            length: 32
+        })
+            .default("totp")
+            .notNull(),
+
+        purpose: varchar("purpose", {
+            length: 32
+        })
+            .notNull(),
+
+        secretCiphertext: text("secret_ciphertext")
+            .notNull(),
+
+        secretIv: text("secret_iv")
+            .notNull(),
+
+        secretAuthTag: text("secret_auth_tag")
+            .notNull(),
+
+        attemptCount: integer("attempt_count")
+            .default(0)
+            .notNull(),
+
+        expiresAt: timestamp("expires_at", {
+            withTimezone: true
+        }).notNull(),
+
+        createdAt: timestamp("created_at", {
+            withTimezone: true
+        })
+            .defaultNow()
+            .notNull()
+    },
+    (table) => [
+        uniqueIndex(
+            "mfa_enrollments_user_type_purpose_unique"
+        ).on(
+            table.userId,
+            table.type,
+            table.purpose
+        )
+    ]
 );
 
 export const mfaRecoveryCodes = pgTable(

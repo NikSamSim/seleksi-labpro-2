@@ -19,10 +19,14 @@ import {
 type SessionExecutor =
     Pick<typeof db, "insert">;
 
+export type SessionMfaMethod =
+    "totp" | "recovery_code";
+
 type CreateCentralSessionInput = {
     userId: string;
     ipAddress?: string | null;
     userAgent?: string | null;
+    mfaMethod?: SessionMfaMethod | null;
 };
 
 const safeSessionColumns = {
@@ -32,6 +36,8 @@ const safeSessionColumns = {
     createdAt: ssoSessions.createdAt,
     expiresAt: ssoSessions.expiresAt,
     lastActivityAt: ssoSessions.lastActivityAt,
+    mfaVerifiedAt: ssoSessions.mfaVerifiedAt,
+    mfaMethod: ssoSessions.mfaMethod,
     revokedAt: ssoSessions.revokedAt,
     revokeReason: ssoSessions.revokeReason,
     ipAddress: ssoSessions.ipAddress,
@@ -61,6 +67,8 @@ export async function createCentralSession(
             status: "active",
             expiresAt,
             lastActivityAt: now,
+            mfaVerifiedAt: input.mfaMethod ? now : null,
+            mfaMethod: input.mfaMethod ?? null,
             ipAddress: input.ipAddress ?? null,
             userAgent: input.userAgent ?? null
         })
@@ -109,6 +117,10 @@ export async function validateCentralSession(
             sessionExpiresAt: ssoSessions.expiresAt,
             sessionLastActivityAt:
                 ssoSessions.lastActivityAt,
+            sessionMfaVerifiedAt:
+                ssoSessions.mfaVerifiedAt,
+            sessionMfaMethod:
+                ssoSessions.mfaMethod,
 
             userId: users.id,
             userName: users.name,
@@ -146,7 +158,11 @@ export async function validateCentralSession(
             createdAt: result.sessionCreatedAt,
             expiresAt: result.sessionExpiresAt,
             lastActivityAt:
-                result.sessionLastActivityAt
+                result.sessionLastActivityAt,
+            mfaVerifiedAt:
+                result.sessionMfaVerifiedAt,
+            mfaMethod:
+                result.sessionMfaMethod
         },
         user: {
             id: result.userId,
@@ -155,4 +171,29 @@ export async function validateCentralSession(
             status: result.userStatus
         }
     };
+}
+
+export function hasRecentMfaVerification(
+    session: {
+        mfaVerifiedAt: Date | null;
+        mfaMethod: string | null;
+    }
+) {
+    if (
+        !session.mfaVerifiedAt ||
+        (
+            session.mfaMethod !== "totp" &&
+            session.mfaMethod !== "recovery_code"
+        )
+    ) {
+        return false;
+    }
+
+    const ageMs =
+        Date.now() - session.mfaVerifiedAt.getTime();
+
+    return (
+        ageMs >= 0 &&
+        ageMs <= env.MFA_RECENT_VERIFICATION_SECONDS * 1000
+    );
 }

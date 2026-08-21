@@ -11,19 +11,50 @@ Implementasi **Identity & Authorization Provider terpusat** untuk Seleksi 2 Labo
 
 ### 1. Siapkan environment
 
-Salin `.env.example` menjadi `.env`, lalu ganti seluruh placeholder secret/credential sebelum menjalankan sistem.
+Salin `.env.example` menjadi `.env`:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Khusus `MFA_ENCRYPTION_KEY_BASE64`, gunakan key acak 32-byte dalam Base64, misalnya:
+Untuk Linux/macOS:
 
-```powershell
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```bash
+cp .env.example .env
 ```
 
-Pastikan juga `APP_A_INTERNAL_LOGOUT_SECRET` dan `APP_B_INTERNAL_LOGOUT_SECRET` berisi secret acak minimal 32 karakter.
+Sebelum menjalankan sistem, ubah nilai berikut pada `.env`:
+
+| Variable | Keterangan |
+|---|---|
+| `PRIMARY_DB_PASSWORD` | Password Primary PostgreSQL |
+| `APP_A_DB_PASSWORD` | Password PostgreSQL App A |
+| `APP_B_DB_PASSWORD` | Password PostgreSQL App B |
+| `RABBITMQ_PASSWORD` | Password RabbitMQ |
+| `APP_A_CLIENT_SECRET` | Client secret untuk App A |
+| `APP_B_CLIENT_SECRET` | Client secret untuk App B |
+| `SEED_USER_PASSWORD` | Password untuk seluruh akun user yang dibuat oleh seed |
+| `MFA_ENCRYPTION_KEY_BASE64` | Key acak 32-byte dalam Base64 untuk mengenkripsi TOTP secret |
+| `APP_A_INTERNAL_LOGOUT_SECRET` | HMAC secret untuk `/internal/logout` App A, minimal 32 karakter |
+| `APP_B_INTERNAL_LOGOUT_SECRET` | HMAC secret untuk `/internal/logout` App B, minimal 32 karakter |
+
+Konfigurasi lain dapat menggunakan nilai default pada `.env.example` apabila sistem dijalankan melalui Docker Compose dengan port localhost yang telah disediakan.
+
+Generate `MFA_ENCRYPTION_KEY_BASE64` menggunakan:
+
+```powershell
+docker run --rm node:24-bookworm-slim node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+Generate secret acak menggunakan command berikut:
+
+```powershell
+docker run --rm node:24-bookworm-slim node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Jalankan command tersebut kembali untuk setiap secret yang diperlukan agar `APP_A_CLIENT_SECRET`, `APP_B_CLIENT_SECRET`, `APP_A_INTERNAL_LOGOUT_SECRET`, dan `APP_B_INTERNAL_LOGOUT_SECRET` menggunakan nilai yang berbeda.
+
+`PRIMARY_DATABASE_URL`, `APP_A_DATABASE_URL`, `APP_B_DATABASE_URL`, dan `RABBITMQ_URL` pada `.env.example` digunakan ketika service dijalankan langsung dari host. Ketika menggunakan Docker Compose, connection URL dikonstruksi ulang menggunakan credential dan nama service Docker.
 
 ### 2. Build dan jalankan infrastructure
 

@@ -1,4 +1,9 @@
 import type { FastifyInstance } from "fastify";
+import { env } from "../../config/env.js";
+import {
+    adminResetUserMfa,
+    getAdminUserMfaStatus
+} from "../mfa/reset-service.js";
 
 import {
     createUserBodySchema,
@@ -34,6 +39,38 @@ export async function userRoutes(app: FastifyInstance) {
 
         return {
             user
+        };
+    });
+
+    app.get("/:userId/mfa", async (request) => {
+        const { userId } = userIdParamsSchema.parse(request.params);
+        const mfa = await getAdminUserMfaStatus(userId);
+
+        return { mfa };
+    });
+
+    app.post("/:userId/mfa/reset", async (request, reply) => {
+        const { userId } = userIdParamsSchema.parse(request.params);
+        const admin = request.admin!;
+
+        const reset = await adminResetUserMfa({
+            userId,
+            actorId: admin.userId,
+            sessionId: admin.sessionId,
+            ipAddress: request.ip
+        });
+
+        if (userId === admin.userId && reset.changed) {
+            reply.clearCookie(env.SSO_COOKIE_NAME, { path: "/" });
+            reply.clearCookie(env.MFA_PENDING_COOKIE_NAME, { path: "/" });
+        }
+
+        return {
+            mfa: {
+                enabled: false,
+                enabledAt: null
+            },
+            reset
         };
     });
 

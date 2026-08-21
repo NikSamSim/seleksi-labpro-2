@@ -13,6 +13,8 @@ import {
 
 import {
     getUser,
+    getUserMfaStatus,
+    resetUserMfa,
     updateUser,
     updateUserPassword,
     updateUserStatus
@@ -22,6 +24,7 @@ import type {
     Group,
     PaginationMeta,
     UpdateUserInput,
+    UserMfaStatus,
     User
 } from "../api/types";
 
@@ -122,6 +125,11 @@ export function UserDetailPage({
         string | null
     >(null);
 
+    const [mfaStatus, setMfaStatus] = useState<UserMfaStatus | null>(null);
+    const [resettingMfa, setResettingMfa] = useState(false);
+    const [mfaError, setMfaError] = useState<string | null>(null);
+    const [mfaMessage, setMfaMessage] = useState<string | null>(null);
+
     const [
         groupSearchInput,
         setGroupSearchInput
@@ -188,16 +196,13 @@ export function UserDetailPage({
             try {
                 const [
                     loadedUser,
-                    loadedMemberships
-                ] =
-                    await Promise.all([
-                        getUser(
-                            userId
-                        ),
-                        listUserGroups(
-                            userId
-                        )
-                    ]);
+                    loadedMemberships,
+                    loadedMfaStatus
+                ] = await Promise.all([
+                    getUser(userId),
+                    listUserGroups(userId),
+                    getUserMfaStatus(userId)
+                ]);
 
                 if (cancelled) {
                     return;
@@ -210,6 +215,8 @@ export function UserDetailPage({
                 setMemberships(
                     loadedMemberships
                 );
+
+                setMfaStatus(loadedMfaStatus);
 
                 setEditInput({
                     name:
@@ -443,6 +450,43 @@ export function UserDetailPage({
             setUpdatingPassword(
                 false
             );
+        }
+    }
+
+    async function handleResetMfa() {
+        if (!mfaStatus?.enabled) {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            "Reset MFA user ini? Authenticator dan seluruh recovery code akan dihapus, dan semua session user akan dicabut."
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setResettingMfa(true);
+        setMfaError(null);
+        setMfaMessage(null);
+
+        try {
+            const result = await resetUserMfa(userId);
+            setMfaStatus(result.mfa);
+
+            setMfaMessage(
+                result.reset.changed
+                    ? "MFA berhasil di-reset. Seluruh session user telah dicabut."
+                    : "MFA user sudah tidak aktif."
+            );
+        } catch (error) {
+            setMfaError(
+                error instanceof Error
+                    ? error.message
+                    : "Gagal me-reset MFA"
+            );
+        } finally {
+            setResettingMfa(false);
         }
     }
 
@@ -768,6 +812,64 @@ export function UserDetailPage({
                                     {
                                         passwordError
                                     }
+                                </p>
+                            )}
+                        </section>
+
+                        <section>
+                            <h4>MFA</h4>
+
+                            {mfaStatus === null ? (
+                                <p>Memuat status MFA...</p>
+                            ) : (
+                                <>
+                                    <p>
+                                        Status:{" "}
+                                        <strong>
+                                            {mfaStatus.enabled
+                                                ? "Enabled"
+                                                : "Disabled"}
+                                        </strong>
+                                    </p>
+
+                                    {mfaStatus.enabledAt && (
+                                        <p>
+                                            Enabled at:{" "}
+                                            {new Date(
+                                                mfaStatus.enabledAt
+                                            ).toLocaleString()}
+                                        </p>
+                                    )}
+
+                                    {mfaStatus.enabled && (
+                                        <>
+                                            <p>
+                                                Reset MFA akan menghapus
+                                                authenticator dan seluruh
+                                                recovery code user, serta
+                                                mencabut semua session.
+                                            </p>
+
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    void handleResetMfa()
+                                                }
+                                                disabled={resettingMfa}
+                                            >
+                                                {resettingMfa
+                                                    ? "Resetting..."
+                                                    : "Reset MFA"}
+                                            </button>
+                                        </>
+                                    )}
+                                </>
+                            )}
+
+                            {mfaMessage && <p>{mfaMessage}</p>}
+                            {mfaError && (
+                                <p>
+                                    Gagal me-reset MFA: {mfaError}
                                 </p>
                             )}
                         </section>

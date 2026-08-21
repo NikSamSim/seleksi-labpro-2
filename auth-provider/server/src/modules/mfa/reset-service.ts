@@ -262,3 +262,49 @@ export async function disableOwnMfa(input: DisableOwnMfaInput) {
 
     return result;
 }
+
+export async function getAdminUserMfaStatus(userId: string) {
+    const [result] = await db
+        .select({
+            userId: users.id,
+            enabledAt: userMfaMethods.enabledAt
+        })
+        .from(users)
+        .leftJoin(
+            userMfaMethods,
+            and(
+                eq(userMfaMethods.userId, users.id),
+                eq(userMfaMethods.type, MFA_TYPE)
+            )
+        )
+        .where(eq(users.id, userId))
+        .limit(1);
+
+    if (!result) {
+        throw new AppError(404, "NOT_FOUND", "User tidak ditemukan");
+    }
+
+    return {
+        enabled: result.enabledAt !== null,
+        enabledAt: result.enabledAt
+    };
+}
+
+type AdminResetUserMfaInput = {
+    userId: string;
+    actorId: string;
+    sessionId: string;
+    ipAddress?: string | null;
+};
+
+export async function adminResetUserMfa(input: AdminResetUserMfaInput) {
+    await getAdminUserMfaStatus(input.userId);
+
+    return resetUserMfa({
+        userId: input.userId,
+        actorId: input.actorId,
+        reason: "mfa_admin_reset",
+        sessionId: input.sessionId,
+        ipAddress: input.ipAddress ?? null
+    });
+}

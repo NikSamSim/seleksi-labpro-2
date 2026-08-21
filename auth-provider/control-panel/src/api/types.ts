@@ -169,3 +169,14 @@ export type CreateApplicationPolicyInput = {
     groupId: string;
     effect: PolicyEffect;
 };
+
+export type UserMfaStatus = {
+    enabled: boolean;
+    enabledAt: string | null;
+};
+
+export type AdminResetUserMfaResult = {
+    changed: boolean;
+    revokedSessionCount?: number;
+    revokedTokenCount?: number;
+};

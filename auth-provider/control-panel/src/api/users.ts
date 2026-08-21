@@ -6,12 +6,23 @@ import type {
     UpdateUserInput,
     UpdateUserPasswordInput,
     UpdateUserStatusInput,
-    User
+    User,
+    AdminResetUserMfaResult,
+    UserMfaStatus
 } from "./types";
 import {
     apiRequest,
     withQuery
 } from "./client";
+
+type UserMfaResponse = {
+    mfa: UserMfaStatus;
+};
+
+type ResetUserMfaResponse = {
+    mfa: UserMfaStatus;
+    reset: AdminResetUserMfaResult;
+};
 
 type ListUsersResponse = {
     users: User[];
@@ -116,4 +127,23 @@ export async function updateUserStatus(
         );
 
     return response.user;
+}
+
+export async function getUserMfaStatus(
+    userId: string
+): Promise<UserMfaStatus> {
+    const response = await apiRequest<UserMfaResponse>(
+        `/admin/users/${userId}/mfa`
+    );
+
+    return response.mfa;
+}
+
+export async function resetUserMfa(
+    userId: string
+): Promise<ResetUserMfaResponse> {
+    return apiRequest<ResetUserMfaResponse>(
+        `/admin/users/${userId}/mfa/reset`,
+        { method: "POST" }
+    );
 }

@@ -497,6 +497,24 @@ export async function mfaRoutes(app: FastifyInstance) {
 
         reply.header("Cache-Control", "no-store");
 
+        const recoveryCodeNotice =
+            principal.session.mfaMethod ===
+            "recovery_code"
+                ? `
+                    <p>
+                        <strong>
+                            This session was verified using a
+                            recovery code.
+                        </strong>
+                    </p>
+
+                    <p>
+                        If your authenticator is lost or no longer
+                        accessible, replace it before signing out.
+                    </p>
+                `
+                : "";
+
         if (status.enabled) {
             return reply
                 .type("text/html; charset=utf-8")
@@ -512,6 +530,8 @@ export async function mfaRoutes(app: FastifyInstance) {
                         <p>
                             TOTP MFA is active for this account.
                         </p>
+
+                        ${recoveryCodeNotice}
 
                         <p>
                             <a href="/security/mfa/replace">

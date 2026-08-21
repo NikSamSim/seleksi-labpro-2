@@ -51,9 +51,31 @@ function redirectToLogin(
 function renderAccountPage(input: {
     name: string;
     email: string;
+    mfaMethod: string | null;
 }) {
     const name = escapeHtml(input.name);
     const email = escapeHtml(input.email);
+    const recoveryCodeNotice =
+        input.mfaMethod === "recovery_code"
+            ? `
+                <p>
+                    <strong>
+                        You signed in using a recovery code.
+                    </strong>
+                </p>
+
+                <p>
+                    If you no longer have access to your
+                    authenticator, replace it now.
+                </p>
+
+                <p>
+                    <a href="/security/mfa/replace">
+                        Replace Authenticator
+                    </a>
+                </p>
+            `
+            : "";
 
     return `
 <!doctype html>
@@ -84,6 +106,8 @@ function renderAccountPage(input: {
 
         <section>
             <h3>Security</h3>
+
+            ${recoveryCodeNotice}
 
             <p>
                 <a href="/account/password">
@@ -254,7 +278,8 @@ export async function accountRoutes(
             .send(
                 renderAccountPage({
                     name: principal.user.name,
-                    email: principal.user.email
+                    email: principal.user.email,
+                    mfaMethod: principal.session.mfaMethod
                 })
             );
     });

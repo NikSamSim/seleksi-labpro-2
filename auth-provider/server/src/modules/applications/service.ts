@@ -1,4 +1,12 @@
-import { and, eq, ne } from "drizzle-orm";
+import {
+    and,
+    asc,
+    eq,
+    ilike,
+    ne,
+    or,
+    sql
+} from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import {
@@ -6,6 +14,10 @@ import {
     applications
 } from "../../db/schema/index.js";
 import { AppError } from "../../http/errors.js";
+import {
+    createPaginationMeta,
+    getPaginationOffset
+} from "../../http/pagination.js";
 import {
     generateClientSecret,
     hashClientSecret
@@ -18,6 +30,7 @@ import { revokeApplicationAccess } from "../revocation/service.js";
 import type {
     CreateApplicationInput,
     CreateRedirectUriInput,
+    ListApplicationsQuery,
     UpdateApplicationInput,
     UpdateApplicationStatusInput
 } from "./schemas.js";
@@ -106,10 +119,72 @@ function isMissingRedirectUriApplication(
     );
 }
 
-export async function listApplications() {
-    return db
-        .select(safeApplicationColumns)
-        .from(applications);
+export async function listApplications(
+    query: ListApplicationsQuery
+) {
+    const where = and(
+        query.search
+            ? or(
+                ilike(
+                    applications.name,
+                    `%${query.search}%`
+                ),
+                ilike(
+                    applications.clientId,
+                    `%${query.search}%`
+                )
+            )
+            : undefined,
+
+        query.status
+            ? eq(
+                applications.status,
+                query.status
+            )
+            : undefined
+    );
+
+    const offset = getPaginationOffset(
+        query.page,
+        query.pageSize
+    );
+
+    const [
+        applicationRows,
+        [countRow]
+    ] = await Promise.all([
+        db
+            .select(safeApplicationColumns)
+            .from(applications)
+            .where(where)
+            .orderBy(
+                asc(applications.name),
+                asc(applications.id)
+            )
+            .limit(query.pageSize)
+            .offset(offset),
+
+        db
+            .select({
+                totalItems:
+                    sql<number>`count(*)::int`
+            })
+            .from(applications)
+            .where(where)
+    ]);
+
+    const totalItems =
+        countRow?.totalItems ?? 0;
+
+    return {
+        applications: applicationRows,
+
+        pagination: createPaginationMeta(
+            query.page,
+            query.pageSize,
+            totalItems
+        )
+    };
 }
 
 export async function getApplicationById(

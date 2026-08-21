@@ -1,8 +1,15 @@
-import { apiRequest } from "./client";
+import {
+    apiRequest,
+    withQuery
+} from "./client";
 
 import type {
     CreateGroupInput,
     Group,
+    ListGroupsQuery,
+    ListGroupUsersQuery,
+    PaginatedResult,
+    PaginationMeta,
     UpdateGroupInput,
     User,
     UserGroupMembership
@@ -10,6 +17,7 @@ import type {
 
 type ListGroupsResponse = {
     groups: Group[];
+    pagination: PaginationMeta;
 };
 
 type MembershipResponse = {
@@ -22,26 +30,62 @@ type GroupResponse = {
 
 type ListGroupUsersResponse = {
     users: User[];
+    pagination: PaginationMeta;
 };
 
-export async function listGroups(): Promise<Group[]> {
+export async function listGroupsPage(
+    query: ListGroupsQuery = {}
+): Promise<PaginatedResult<Group>> {
     const response =
         await apiRequest<ListGroupsResponse>(
-            "/admin/groups"
+            withQuery(
+                "/admin/groups",
+                {
+                    page: query.page,
+                    pageSize: query.pageSize,
+                    search: query.search
+                }
+            )
         );
 
-    return response.groups;
+    return {
+        items: response.groups,
+        pagination: response.pagination
+    };
 }
 
-export async function listGroupUsers(
+export async function getGroup(
     groupId: string
-): Promise<User[]> {
+): Promise<Group> {
     const response =
-        await apiRequest<ListGroupUsersResponse>(
-            `/admin/groups/${groupId}/users`
+        await apiRequest<GroupResponse>(
+            `/admin/groups/${groupId}`
         );
 
-    return response.users;
+    return response.group;
+}
+
+export async function listGroupUsersPage(
+    groupId: string,
+    query: ListGroupUsersQuery = {}
+): Promise<PaginatedResult<User>> {
+    const response =
+        await apiRequest<ListGroupUsersResponse>(
+            withQuery(
+                `/admin/groups/${groupId}/users`,
+                {
+                    page: query.page,
+                    pageSize: query.pageSize,
+                    search: query.search,
+                    status: query.status
+                }
+            )
+        );
+
+    return {
+        items: response.users,
+        pagination: response.pagination
+    };
 }
 
 export async function listUserGroups(

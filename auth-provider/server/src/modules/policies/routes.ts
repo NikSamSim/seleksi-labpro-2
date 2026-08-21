@@ -3,7 +3,8 @@ import type { FastifyInstance } from "fastify";
 import {
     applicationPolicyIdParamsSchema,
     applicationPolicyParamsSchema,
-    createApplicationPolicyBodySchema
+    createApplicationPolicyBodySchema,
+    listApplicationPoliciesQuerySchema
 } from "./schemas.js";
 
 import {
@@ -23,14 +24,15 @@ export async function policyRoutes(
                     request.params
                 );
 
-            const policies =
-                await listApplicationPolicies(
-                    applicationId
+            const query =
+                listApplicationPoliciesQuerySchema.parse(
+                    request.query
                 );
 
-            return {
-                policies
-            };
+            return listApplicationPolicies(
+                applicationId,
+                query
+            );
         }
     );
 

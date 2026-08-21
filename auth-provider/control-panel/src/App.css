@@ -5,3 +5,57 @@
 .control-panel {
     padding: 2rem;
 }
+
+.control-panel-header {
+    margin-bottom: 1.5rem;
+}
+
+.control-panel-nav {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.control-panel-content > section {
+    margin-top: 1rem;
+}
+
+.control-panel-content section section {
+    margin-top: 2rem;
+}
+
+.control-panel form {
+    margin-bottom: 1rem;
+}
+
+.control-panel form > div {
+    margin-bottom: 0.5rem;
+}
+
+.control-panel label {
+    display: inline-block;
+    margin-right: 0.25rem;
+}
+
+.control-panel table {
+    border-collapse: collapse;
+    margin-top: 1rem;
+}
+
+.control-panel th,
+.control-panel td {
+    border: 1px solid #ddd;
+    padding: 0.5rem;
+    text-align: left;
+}
+
+.control-panel button {
+    margin-right: 0.25rem;
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}

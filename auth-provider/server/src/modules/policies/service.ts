@@ -1,7 +1,10 @@
 import {
     and,
+    asc,
     eq,
-    inArray
+    ilike,
+    inArray,
+    sql
 } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
@@ -12,6 +15,10 @@ import {
     userGroups
 } from "../../db/schema/index.js";
 import { AppError } from "../../http/errors.js";
+import {
+    createPaginationMeta,
+    getPaginationOffset
+} from "../../http/pagination.js";
 
 import { writeAudit } from "../audit/service.js";
 import {
@@ -22,7 +29,8 @@ import {
 } from "../revocation/service.js";
 
 import type {
-    CreateApplicationPolicyInput
+    CreateApplicationPolicyInput,
+    ListApplicationPoliciesQuery
 } from "./schemas.js";
 
 const policyColumns = {
@@ -113,53 +121,93 @@ function isMissingPolicyGroup(
 }
 
 export async function listApplicationPolicies(
-    applicationId: string
+    applicationId: string,
+    query: ListApplicationPoliciesQuery
 ) {
-    const rows = await db
-        .select({
-            applicationId:
-                applications.id,
-
-            policyId:
-                applicationGroupPolicies.id,
-
-            groupId:
-                applicationGroupPolicies.groupId,
-
-            groupName:
+    const where = and(
+        eq(
+            applicationGroupPolicies.applicationId,
+            applicationId
+        ),
+        query.search
+            ? ilike(
                 groups.name,
-
-            effect:
-                applicationGroupPolicies.effect,
-
-            createdAt:
-                applicationGroupPolicies.createdAt
-        })
-        .from(applications)
-        .leftJoin(
-            applicationGroupPolicies,
-            eq(
-                applicationGroupPolicies
-                    .applicationId,
-                applications.id
+                `%${query.search}%`
             )
-        )
-        .leftJoin(
-            groups,
-            eq(
-                groups.id,
-                applicationGroupPolicies
-                    .groupId
-            )
-        )
-        .where(
-            eq(
-                applications.id,
-                applicationId
-            )
-        );
+            : undefined
+    );
 
-    if (rows.length === 0) {
+    const offset = getPaginationOffset(
+        query.page,
+        query.pageSize
+    );
+
+    const [
+        [application],
+        policyRows,
+        [countRow]
+    ] = await Promise.all([
+        db
+            .select({
+                id: applications.id
+            })
+            .from(applications)
+            .where(
+                eq(
+                    applications.id,
+                    applicationId
+                )
+            )
+            .limit(1),
+
+        db
+            .select({
+                id:
+                    applicationGroupPolicies.id,
+                applicationId:
+                    applicationGroupPolicies.applicationId,
+                groupId:
+                    applicationGroupPolicies.groupId,
+                groupName:
+                    groups.name,
+                effect:
+                    applicationGroupPolicies.effect,
+                createdAt:
+                    applicationGroupPolicies.createdAt
+            })
+            .from(applicationGroupPolicies)
+            .innerJoin(
+                groups,
+                eq(
+                    groups.id,
+                    applicationGroupPolicies.groupId
+                )
+            )
+            .where(where)
+            .orderBy(
+                asc(groups.name),
+                asc(applicationGroupPolicies.id)
+            )
+            .limit(query.pageSize)
+            .offset(offset),
+
+        db
+            .select({
+                totalItems:
+                    sql<number>`count(*)::int`
+            })
+            .from(applicationGroupPolicies)
+            .innerJoin(
+                groups,
+                eq(
+                    groups.id,
+                    applicationGroupPolicies.groupId
+                )
+            )
+            .where(where)
+    ]);
+
+    if (!application) {
         throw new AppError(
             404,
             "NOT_FOUND",
@@ -167,31 +215,17 @@ export async function listApplicationPolicies(
         );
     }
 
-    return rows.flatMap((row) => {
-        if (
-            row.policyId === null ||
-            row.groupId === null ||
-            row.groupName === null ||
-            row.effect === null ||
-            row.createdAt === null
-        ) {
-            return [];
-        }
+    const totalItems =
+        countRow?.totalItems ?? 0;
 
-        return [{
-            id: row.policyId,
-            applicationId:
-                row.applicationId,
-            groupId:
-                row.groupId,
-            groupName:
-                row.groupName,
-            effect:
-                row.effect,
-            createdAt:
-                row.createdAt
-        }];
-    });
+    return {
+        policies: policyRows,
+        pagination: createPaginationMeta(
+            query.page,
+            query.pageSize,
+            totalItems
+        )
+    };
 }
 
 export async function createApplicationPolicy(

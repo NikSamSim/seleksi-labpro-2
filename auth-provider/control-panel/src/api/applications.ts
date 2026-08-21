@@ -1,10 +1,16 @@
-import { apiRequest } from "./client";
+import {
+    apiRequest,
+    withQuery
+} from "./client";
 
 import type {
     Application,
     CreateApplicationInput,
     CreateApplicationResult,
     CreateRedirectUriInput,
+    ListApplicationsQuery,
+    PaginatedResult,
+    PaginationMeta,
     RedirectUri,
     UpdateApplicationInput,
     UpdateApplicationStatusInput
@@ -12,6 +18,7 @@ import type {
 
 type ListApplicationsResponse = {
     applications: Application[];
+    pagination: PaginationMeta;
 };
 
 type ApplicationResponse = {
@@ -25,6 +32,39 @@ type ListRedirectUrisResponse = {
 type RedirectUriResponse = {
     redirectUri: RedirectUri;
 };
+
+export async function listApplicationsPage(
+    query: ListApplicationsQuery = {}
+): Promise<PaginatedResult<Application>> {
+    const response =
+        await apiRequest<ListApplicationsResponse>(
+            withQuery(
+                "/admin/applications",
+                {
+                    page: query.page,
+                    pageSize: query.pageSize,
+                    search: query.search,
+                    status: query.status
+                }
+            )
+        );
+
+    return {
+        items: response.applications,
+        pagination: response.pagination
+    };
+}
+
+export async function getApplication(
+    applicationId: string
+): Promise<Application> {
+    const response =
+        await apiRequest<ApplicationResponse>(
+            `/admin/applications/${applicationId}`
+        );
+
+    return response.application;
+}
 
 export async function updateApplication(
     applicationId: string,
@@ -40,15 +80,6 @@ export async function updateApplication(
         );
 
     return response.application;
-}
-
-export async function listApplications(): Promise<Application[]> {
-    const response =
-        await apiRequest<ListApplicationsResponse>(
-            "/admin/applications"
-        );
-
-    return response.applications;
 }
 
 export async function createApplication(

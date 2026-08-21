@@ -9,6 +9,47 @@ export type ApplicationStatus =
 export type PolicyEffect =
     "allow";
 
+export type PaginationMeta = {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+};
+
+export type PaginatedResult<T> = {
+    items: T[];
+    pagination: PaginationMeta;
+};
+
+export type PaginationQuery = {
+    page?: number;
+    pageSize?: number;
+};
+
+export type ListUsersQuery = PaginationQuery & {
+    search?: string;
+    status?: UserStatus;
+};
+
+export type ListGroupsQuery = PaginationQuery & {
+    search?: string;
+};
+
+export type ListGroupUsersQuery = PaginationQuery & {
+    search?: string;
+    status?: UserStatus;
+};
+
+export type ListApplicationsQuery = PaginationQuery & {
+    search?: string;
+    status?: ApplicationStatus;
+};
+
+export type ListApplicationPoliciesQuery =
+    PaginationQuery & {
+        search?: string;
+    };
+
 export type User = {
     id: string;
     name: string;

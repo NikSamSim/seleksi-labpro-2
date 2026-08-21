@@ -1,27 +1,58 @@
-import { apiRequest } from "./client";
 import type {
     CreateUserInput,
+    ListUsersQuery,
+    PaginatedResult,
+    PaginationMeta,
     UpdateUserInput,
     UpdateUserPasswordInput,
     UpdateUserStatusInput,
     User
 } from "./types";
+import {
+    apiRequest,
+    withQuery
+} from "./client";
 
 type ListUsersResponse = {
     users: User[];
+    pagination: PaginationMeta;
 };
 
 type UserResponse = {
     user: User;
 };
 
-export async function listUsers(): Promise<User[]> {
+export async function listUsersPage(
+    query: ListUsersQuery = {}
+): Promise<PaginatedResult<User>> {
     const response =
         await apiRequest<ListUsersResponse>(
-            "/admin/users"
+            withQuery(
+                "/admin/users",
+                {
+                    page: query.page,
+                    pageSize: query.pageSize,
+                    search: query.search,
+                    status: query.status
+                }
+            )
         );
 
-    return response.users;
+    return {
+        items: response.users,
+        pagination: response.pagination
+    };
+}
+
+export async function getUser(
+    userId: string
+): Promise<User> {
+    const response =
+        await apiRequest<UserResponse>(
+            `/admin/users/${userId}`
+        );
+
+    return response.user;
 }
 
 export async function updateUserPassword(

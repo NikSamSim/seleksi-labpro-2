@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 
 import {
     addUserGroupBodySchema,
+    listGroupsQuerySchema,
+    listGroupUsersQuerySchema,
     createGroupBodySchema,
     groupIdParamsSchema,
     updateGroupBodySchema,
@@ -11,6 +13,7 @@ import {
 
 import {
     addUserToGroup,
+    getGroupById,
     createGroup,
     listGroups,
     listGroupUsers,
@@ -20,12 +23,13 @@ import {
 } from "./service.js";
 
 export async function groupRoutes(app: FastifyInstance) {
-    app.get("/", async () => {
-        const groups = await listGroups();
+    app.get("/", async (request) => {
+        const query =
+            listGroupsQuerySchema.parse(
+                request.query
+            );
 
-        return {
-            groups
-        };
+        return listGroups(query);
     });
 
     app.get(
@@ -36,11 +40,31 @@ export async function groupRoutes(app: FastifyInstance) {
                     request.params
                 );
 
-            const users =
-                await listGroupUsers(groupId);
+            const query =
+                listGroupUsersQuerySchema.parse(
+                    request.query
+                );
+
+            return listGroupUsers(
+                groupId,
+                query
+            );
+        }
+    );
+
+    app.get(
+        "/:groupId",
+        async (request) => {
+            const { groupId } =
+                groupIdParamsSchema.parse(
+                    request.params
+                );
+
+            const group =
+                await getGroupById(groupId);
 
             return {
-                users
+                group
             };
         }
     );

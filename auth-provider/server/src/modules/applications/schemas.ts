@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { paginationQuerySchema } from "../../http/pagination.js";
 
 const applicationNameSchema = z
     .string()
@@ -11,6 +12,15 @@ const clientIdSchema = z
     .trim()
     .min(1)
     .max(255);
+
+export const listApplicationsQuerySchema = paginationQuerySchema.extend({
+    search: z.string().trim().max(255).optional(),
+
+    status: z.enum([
+        "active",
+        "inactive"
+    ]).optional()
+}).strict();
 
 const httpUrlSchema = z
     .string()
@@ -104,3 +114,6 @@ export type UpdateApplicationStatusInput =
 
 export type CreateRedirectUriInput =
     z.infer<typeof createRedirectUriBodySchema>;
+
+export type ListApplicationsQuery =
+    z.infer<typeof listApplicationsQuerySchema>;

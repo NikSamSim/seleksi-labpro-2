@@ -1,12 +1,20 @@
 import {
     and,
+    asc,
     eq,
-    ne
+    ilike,
+    ne,
+    or,
+    sql
 } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
 import { users } from "../../db/schema/index.js";
 import { AppError } from "../../http/errors.js";
+import {
+    createPaginationMeta,
+    getPaginationOffset
+} from "../../http/pagination.js";
 import { hashPassword } from "../../security/password.js";
 
 import { writeAudit } from "../audit/service.js";
@@ -19,6 +27,7 @@ import {
 
 import type {
     CreateUserInput,
+    ListUsersQuery,
     UpdateUserInput,
     UpdateUserPasswordInput,
     UpdateUserStatusInput
@@ -80,10 +89,47 @@ function isUserEmailConflict(
     );
 }
 
-export async function listUsers() {
-    return db
-        .select(safeUserColumns)
-        .from(users);
+export async function listUsers(query: ListUsersQuery) {
+    const where = and(
+        query.search
+            ? or(
+                ilike(users.name, `%${query.search}%`),
+                ilike(users.email, `%${query.search}%`)
+            )
+            : undefined,
+        query.status
+            ? eq(users.status, query.status)
+            : undefined
+    );
+
+    const offset = getPaginationOffset(query.page, query.pageSize);
+
+    const [userRows, [countRow]] = await Promise.all([
+        db
+            .select(safeUserColumns)
+            .from(users)
+            .where(where)
+            .orderBy(asc(users.name), asc(users.id))
+            .limit(query.pageSize)
+            .offset(offset),
+        db
+            .select({
+                totalItems: sql<number>`count(*)::int`
+            })
+            .from(users)
+            .where(where)
+    ]);
+
+    const totalItems = countRow?.totalItems ?? 0;
+
+    return {
+        users: userRows,
+        pagination: createPaginationMeta(
+            query.page,
+            query.pageSize,
+            totalItems
+        )
+    };
 }
 
 export async function getUserById(

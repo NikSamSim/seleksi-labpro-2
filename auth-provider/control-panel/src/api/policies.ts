@@ -1,27 +1,45 @@
-import { apiRequest } from "./client";
+import {
+    apiRequest,
+    withQuery
+} from "./client";
 
 import type {
     ApplicationPolicy,
-    CreateApplicationPolicyInput
+    CreateApplicationPolicyInput,
+    ListApplicationPoliciesQuery,
+    PaginatedResult,
+    PaginationMeta
 } from "./types";
 
 type ListApplicationPoliciesResponse = {
     policies: ApplicationPolicy[];
+    pagination: PaginationMeta;
 };
 
 type ApplicationPolicyResponse = {
     policy: ApplicationPolicy;
 };
 
-export async function listApplicationPolicies(
-    applicationId: string
-): Promise<ApplicationPolicy[]> {
+export async function listApplicationPoliciesPage(
+    applicationId: string,
+    query: ListApplicationPoliciesQuery = {}
+): Promise<PaginatedResult<ApplicationPolicy>> {
     const response =
         await apiRequest<ListApplicationPoliciesResponse>(
-            `/admin/applications/${applicationId}/policies`
+            withQuery(
+                `/admin/applications/${applicationId}/policies`,
+                {
+                    page: query.page,
+                    pageSize: query.pageSize,
+                    search: query.search
+                }
+            )
         );
 
-    return response.policies;
+    return {
+        items: response.policies,
+        pagination: response.pagination
+    };
 }
 
 export async function createApplicationPolicy(

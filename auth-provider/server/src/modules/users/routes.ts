@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 
 import {
     createUserBodySchema,
+    listUsersQuerySchema,
     updateUserBodySchema,
     updateUserPasswordBodySchema,
     updateUserStatusBodySchema,
@@ -18,12 +19,11 @@ import {
 } from "./service.js";
 
 export async function userRoutes(app: FastifyInstance) {
-    app.get("/", async () => {
-        const users = await listUsers();
+    app.get("/", async (request) => {
+        const query = listUsersQuerySchema.parse(request.query);
+        const result = await listUsers(query);
 
-        return {
-            users
-        };
+        return result;
     });
 
     app.get("/:userId", async (request) => {

@@ -7,6 +7,42 @@ export const API_BASE_URL = (
     "http://localhost:3000"
 ).replace(/\/+$/, "");
 
+type QueryValue =
+    string |
+    number |
+    null |
+    undefined;
+
+export function withQuery(
+    path: string,
+    query: Record<string, QueryValue>
+) {
+    const searchParams =
+        new URLSearchParams();
+
+    for (const [key, value] of Object.entries(query)) {
+        if (
+            value === undefined ||
+            value === null ||
+            value === ""
+        ) {
+            continue;
+        }
+
+        searchParams.set(
+            key,
+            String(value)
+        );
+    }
+
+    const queryString =
+        searchParams.toString();
+
+    return queryString.length > 0
+        ? `${path}?${queryString}`
+        : path;
+}
+
 function isRecord(
     value: unknown
 ): value is Record<string, unknown> {

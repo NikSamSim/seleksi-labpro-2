@@ -5,6 +5,7 @@ import {
     applicationRedirectUriParamsSchema,
     createApplicationBodySchema,
     createRedirectUriBodySchema,
+    listApplicationsQuerySchema,
     updateApplicationBodySchema,
     updateApplicationStatusBodySchema
 } from "./schemas.js";
@@ -23,13 +24,13 @@ import {
 export async function applicationRoutes(
     app: FastifyInstance
 ) {
-    app.get("/", async () => {
-        const applications =
-            await listApplications();
+    app.get("/", async (request) => {
+        const query =
+            listApplicationsQuerySchema.parse(
+                request.query
+            );
 
-        return {
-            applications
-        };
+        return listApplications(query);
     });
 
     app.get("/:applicationId", async (request) => {

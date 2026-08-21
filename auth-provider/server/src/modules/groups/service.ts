@@ -1,7 +1,11 @@
 import {
     and,
+    asc,
     eq,
-    inArray
+    ilike,
+    inArray,
+    or,
+    sql
 } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
@@ -12,11 +16,17 @@ import {
     users
 } from "../../db/schema/index.js";
 import { AppError } from "../../http/errors.js";
+import {
+    createPaginationMeta,
+    getPaginationOffset
+} from "../../http/pagination.js";
 
 import { writeAudit } from "../audit/service.js";
 
 import type {
     CreateGroupInput,
+    ListGroupsQuery,
+    ListGroupUsersQuery,
     UpdateGroupInput
 } from "./schemas.js";
 
@@ -105,10 +115,73 @@ function isMissingMembershipGroup(error: unknown) {
     );
 }
 
-export async function listGroups() {
-    return db
+export async function listGroups(
+    query: ListGroupsQuery
+) {
+    const where = query.search
+        ? or(
+            ilike(groups.name, `%${query.search}%`),
+            ilike(groups.description, `%${query.search}%`)
+        )
+        : undefined;
+
+    const offset = getPaginationOffset(
+        query.page,
+        query.pageSize
+    );
+
+    const [groupRows, [countRow]] =
+        await Promise.all([
+            db
+                .select(groupColumns)
+                .from(groups)
+                .where(where)
+                .orderBy(
+                    asc(groups.name),
+                    asc(groups.id)
+                )
+                .limit(query.pageSize)
+                .offset(offset),
+            db
+                .select({
+                    totalItems:
+                        sql<number>`count(*)::int`
+                })
+                .from(groups)
+                .where(where)
+        ]);
+
+    const totalItems =
+        countRow?.totalItems ?? 0;
+
+    return {
+        groups: groupRows,
+        pagination: createPaginationMeta(
+            query.page,
+            query.pageSize,
+            totalItems
+        )
+    };
+}
+
+export async function getGroupById(
+    groupId: string
+) {
+    const [group] = await db
         .select(groupColumns)
-        .from(groups);
+        .from(groups)
+        .where(eq(groups.id, groupId))
+        .limit(1);
+
+    if (!group) {
+        throw new AppError(
+            404,
+            "NOT_FOUND",
+            "Group tidak ditemukan"
+        );
+    }
+
+    return group;
 }
 
 export async function createGroup(
@@ -539,30 +612,76 @@ export async function removeUserFromGroup(
 }
 
 export async function listGroupUsers(
-    groupId: string
+    groupId: string,
+    query: ListGroupUsersQuery
 ) {
-    const rows = await db
-        .select({
-            groupId: groups.id,
-            userId: users.id,
-            name: users.name,
-            email: users.email,
-            status: users.status,
-            createdAt: users.createdAt,
-            updatedAt: users.updatedAt
-        })
-        .from(groups)
-        .leftJoin(
-            userGroups,
-            eq(userGroups.groupId, groups.id)
-        )
-        .leftJoin(
-            users,
-            eq(users.id, userGroups.userId)
-        )
-        .where(eq(groups.id, groupId));
+    const where = and(
+        eq(userGroups.groupId, groupId),
+        query.search
+            ? or(
+                ilike(users.name, `%${query.search}%`),
+                ilike(users.email, `%${query.search}%`)
+            )
+            : undefined,
+        query.status
+            ? eq(users.status, query.status)
+            : undefined
+    );
 
-    if (rows.length === 0) {
+    const offset = getPaginationOffset(
+        query.page,
+        query.pageSize
+    );
+
+    const [
+        [group],
+        userRows,
+        [countRow]
+    ] = await Promise.all([
+        db
+            .select({
+                id: groups.id
+            })
+            .from(groups)
+            .where(eq(groups.id, groupId))
+            .limit(1),
+
+        db
+            .select({
+                id: users.id,
+                name: users.name,
+                email: users.email,
+                status: users.status,
+                createdAt: users.createdAt,
+                updatedAt: users.updatedAt
+            })
+            .from(userGroups)
+            .innerJoin(
+                users,
+                eq(users.id, userGroups.userId)
+            )
+            .where(where)
+            .orderBy(
+                asc(users.name),
+                asc(users.id)
+            )
+            .limit(query.pageSize)
+            .offset(offset),
+
+        db
+            .select({
+                totalItems:
+                    sql<number>`count(*)::int`
+            })
+            .from(userGroups)
+            .innerJoin(
+                users,
+                eq(users.id, userGroups.userId)
+            )
+            .where(where)
+    ]);
+
+    if (!group) {
         throw new AppError(
             404,
             "NOT_FOUND",
@@ -570,18 +689,15 @@ export async function listGroupUsers(
         );
     }
 
-    return rows.flatMap((row) => {
-        if (row.userId === null) {
-            return [];
-        }
+    const totalItems =
+        countRow?.totalItems ?? 0;
 
-        return [{
-            id: row.userId,
-            name: row.name!,
-            email: row.email!,
-            status: row.status!,
-            createdAt: row.createdAt!,
-            updatedAt: row.updatedAt!
-        }];
-    });
+    return {
+        users: userRows,
+        pagination: createPaginationMeta(
+            query.page,
+            query.pageSize,
+            totalItems
+        )
+    };
 }

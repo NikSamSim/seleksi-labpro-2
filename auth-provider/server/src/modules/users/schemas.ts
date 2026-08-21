@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { paginationQuerySchema } from "../../http/pagination.js";
 
 const emailSchema = z
     .string()
@@ -58,6 +59,14 @@ export const updateUserPasswordBodySchema = z.object({
         .min(1)
 }).strict();
 
+export const listUsersQuerySchema = paginationQuerySchema.extend({
+    search: z.string().trim().max(320).optional(),
+    status: z.enum([
+        "active",
+        "inactive"
+    ]).optional()
+}).strict();
+
 export type CreateUserInput =
     z.infer<typeof createUserBodySchema>;
 
@@ -69,3 +78,6 @@ export type UpdateUserStatusInput =
 
 export type UpdateUserPasswordInput =
     z.infer<typeof updateUserPasswordBodySchema>;
+
+export type ListUsersQuery =
+    z.infer<typeof listUsersQuerySchema>;

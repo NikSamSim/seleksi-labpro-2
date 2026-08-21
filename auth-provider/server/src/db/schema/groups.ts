@@ -1,4 +1,5 @@
 import {
+    index,
     pgTable,
     text,
     timestamp,
@@ -58,6 +59,9 @@ export const userGroups = pgTable(
     },
     (table) => [
         uniqueIndex("user_groups_user_id_group_id_unique")
-            .on(table.userId, table.groupId)
+            .on(table.userId, table.groupId),
+
+        index("user_groups_group_id_idx")
+            .on(table.groupId)
     ]
 );

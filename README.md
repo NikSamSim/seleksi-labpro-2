@@ -300,13 +300,13 @@ Auth Server, Event Publisher, dan Sync Worker menangani `SIGTERM`/`SIGINT` denga
   <img src="docs/screenshots/04-control-panel-applications.png" alt="Control Panel - Application Configuration, Redirect URIs, and Access Policies" width="720">
 </p>
 
-### 5. SSO — App A Authenticated Session and Activity Log
+### 5. SSO — App A Authenticated Session, Processed Events, and Activity Log
 
 <p align="center">
   <img src="docs/screenshots/05-sso-app-a.png" alt="SSO - App A Authenticated Session and Activity Log" width="720">
 </p>
 
-### 6. SSO — App B Authenticated Session and Activity Log
+### 6. SSO — App B Authenticated Session, Processed Events, and Activity Log
 
 <p align="center">
   <img src="docs/screenshots/06-sso-app-b.png" alt="SSO - App B Authenticated Session and Activity Log" width="720">
